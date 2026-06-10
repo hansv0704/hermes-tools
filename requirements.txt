@@ -108,7 +108,7 @@ posthog==7.18.0
 primp==1.2.3
 propcache==0.4.1
 proto-plus==1.26.1
-protobuf==6.33.6
+protobuf>=3.20.2,<6.0.0
 pyarrow==23.0.0
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
