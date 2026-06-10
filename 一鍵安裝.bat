@@ -134,10 +134,11 @@ echo   ^|  我會自動幫你設定完成                       ^|
 echo   ^|                                           ^|
 echo   +===========================================+
 echo.
-echo 按任意鍵啟動 Gateway...
+echo 按任意鍵安裝背景服務...
 pause >nul
-start "Hermes Gateway" hermes -p alice gateway run
-echo [OK] Gateway 已啟動
+hermes -p alice gateway install >nul 2>nul
+hermes -p alice gateway run
+echo [OK] Gateway 已啟動（開機自動運行）
 pause
 exit /b 0
 
