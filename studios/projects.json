@@ -1,0 +1,15 @@
+{
+  "projects": [
+    {
+      "id": "proj_20260529_011721",
+      "name": "測試",
+      "godot_path": "E:\\Godot_v4.5\\Godot_v4.5-stable_win64.exe",
+      "genre": "測試",
+      "current_phase": 1,
+      "phase_history": [],
+      "created_at": "2026-05-29T01:17:21.332744",
+      "updated_at": "2026-05-29T01:17:21.332756"
+    }
+  ],
+  "active_project": "proj_20260529_011721"
+}

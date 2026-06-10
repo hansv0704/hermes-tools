@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice Game Studio</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* ═══ 新增元件樣式 ═══ */
+        .tree-item.gdscript .tree-icon { color:var(--node-blue); }
+        .tree-item.scene .tree-icon { color:var(--node-teal); }
+        .tree-item.folder .tree-icon { color:var(--node-yellow); }
+        .tree-item.image .tree-icon { color:var(--node-pink); }
+        .tree-item.other .tree-icon { color:var(--text-muted); }
+
+        /* GDScript 編輯器 */
+        .gd-editor-container {
+            display:flex; flex-direction:column; height:100%;
+            background:var(--bg-input);
+        }
+        .gd-editor-header {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:8px 14px; background:var(--bg-panel);
+            border-bottom:1px solid var(--border);
+        }
+        .gd-editor-header .file-info { font-size:12px; color:var(--text-secondary); }
+        .gd-editor-header .file-info .file-name { color:var(--accent); font-weight:600; }
+        .gd-editor-body {
+            flex:1; display:flex; overflow:hidden;
+        }
+        .gd-editor-body textarea {
+            flex:1; padding:16px; background:var(--bg-input);
+            color:var(--text-primary); border:none; outline:none;
+            font-family:var(--font-mono); font-size:13px; line-height:1.7;
+            resize:none; tab-size:4;
+        }
+        .gd-editor-body textarea:focus { background:#0d0d1a; }
+        .line-numbers {
+            width:48px; background:#0a0a15; color:var(--text-muted);
+            text-align:right; padding:16px 10px 16px 8px;
+            font-family:var(--font-mono); font-size:13px; line-height:1.7;
+            user-select:none; overflow:hidden; white-space:pre;
+            border-right:1px solid var(--border);
+        }
+
+        /* 場景節點樹 */
+        .scene-tree { padding:12px 0; }
+        .scene-node {
+            display:flex; align-items:center; padding:4px 12px;
+            cursor:pointer; font-size:12px; gap:6px;
+            border-left:2px solid transparent;
+        }
+        .scene-node:hover { background:var(--bg-hover); }
+        .scene-node.selected { background:var(--bg-selected); border-left-color:var(--accent); }
+        .scene-node .node-type { font-size:10px; color:var(--text-muted); padding:1px 6px; border-radius:3px; background:var(--bg-active); }
+
+        /* Console */
+        .console-container {
+            display:flex; flex-direction:column; height:100%;
+            background:var(--bg-input);
+        }
+        .console-header {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:6px 14px; background:var(--bg-panel);
+            border-bottom:1px solid var(--border);
+            font-size:11px; color:var(--text-secondary); cursor:ns-resize;
+        }
+        .console-output {
+            flex:1; overflow-y:auto; padding:10px 14px;
+            font-family:var(--font-mono); font-size:12px;
+            line-height:1.6; white-space:pre-wrap; word-break:break-all;
+        }
+        .console-line { padding:2px 0; }
+        .console-line.info { color:var(--text-secondary); }
+        .console-line.success { color:var(--success); }
+        .console-line.error { color:var(--danger); }
+        .console-line.warn { color:var(--warning); }
+        .console-line.time { color:var(--text-muted); font-size:10px; }
+
+        /* 建置面板 */
+        .build-preset-card {
+            background:var(--bg-panel); border:1px solid var(--border);
+            border-radius:var(--radius-md); padding:14px; margin-bottom:10px;
+            display:flex; align-items:center; justify-content:space-between;
+        }
+        .build-preset-card:hover { border-color:var(--accent); }
+        .build-preset-info h4 { font-size:13px; color:var(--text-primary); }
+        .build-preset-info span { font-size:11px; color:var(--text-muted); }
+
+        /* Heartbeat 指示器 */
+        .heartbeat-dot {
+            width:8px; height:8px; border-radius:50%; display:inline-block;
+            animation:pulse 2s infinite;
+        }
+        .heartbeat-dot.alive { background:var(--success); }
+        .heartbeat-dot.dead { background:var(--danger); animation:none; }
+        @keyframes pulse {
+            0%,100% { opacity:1; } 50% { opacity:0.4; }
+        }
+
+        /* Skills 列表 */
+        .skill-item {
+            display:flex; align-items:center; padding:5px 10px;
+            font-size:11px; cursor:pointer; gap:6px;
+            border-left:2px solid transparent;
+        }
+        .skill-item:hover { background:var(--bg-hover); }
+        .skill-item .skill-phase-badge {
+            font-size:9px; padding:1px 6px; border-radius:3px;
+            background:var(--bg-active); color:var(--text-muted);
+            white-space:nowrap;
+        }
+
+        /* Console resize */
+        .console-resize-handle {
+            height:5px; background:var(--border); cursor:ns-resize;
+            transition:background .2s;
+        }
+        .console-resize-handle:hover { background:var(--accent); }
+
+        /* 頁面內 iframe 樣式 */
+        .file-preview-img {
+            max-width:100%; max-height:400px; border-radius:var(--radius-md);
+            border:1px solid var(--border);
+        }
+        .file-preview-text {
+            background:var(--bg-input); border:1px solid var(--border);
+            border-radius:var(--radius-md); padding:14px;
+            font-family:var(--font-mono); font-size:12px;
+            max-height:400px; overflow-y:auto; white-space:pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- ═══ 頂部選單列 ═══ -->
+        <div class="top-menu-bar">
+            <span class="menu-item">📄 專案</span>
+            <span class="menu-item">✏️ 編輯</span>
+            <span class="menu-item">🔧 工具</span>
+            <span class="menu-sep"></span>
+            <span class="menu-item" id="menu-run">▶ 執行</span>
+            <span class="menu-item" id="menu-build">📦 建置</span>
+            <span class="menu-sep"></span>
+            <span class="project-name" id="topbar-project-name">— 無活躍專案 —</span>
+        </div>
+
+        <!-- ═══ 左側面板 ═══ -->
+        <div class="panel-left" id="panel-left">
+            <div class="dock-tabs">
+                <div class="dock-tab active" data-tree="phases">🗺️ 路線</div>
+                <div class="dock-tab" data-tree="projects">📂 專案</div>
+                <div class="dock-tab" data-tree="godot">🔧 Godot</div>
+                <div class="dock-tab" data-tree="skills">⚡ Skills</div>
+            </div>
+
+            <!-- Phase 路線圖樹 -->
+            <div class="tree-container" id="tree-phases"></div>
+
+            <!-- 專案清單樹 -->
+            <div class="tree-container" id="tree-projects" style="display:none;">
+                <div class="tree-item" id="tree-new-project" style="color:var(--accent);">
+                    <span class="tree-icon">➕</span><span class="tree-label">建立新專案…</span>
+                </div>
+                <div id="tree-project-list"></div>
+            </div>
+
+            <!-- Godot 工具樹 -->
+            <div class="tree-container" id="tree-godot" style="display:none;">
+                <div class="tree-item" id="tree-godot-detect">
+                    <span class="tree-icon">🔍</span><span class="tree-label">掃描 Godot 安裝</span>
+                </div>
+                <div class="tree-item" id="tree-godot-deep-search">
+                    <span class="tree-icon">🕵️</span><span class="tree-label">深度搜尋所有版本</span>
+                </div>
+                <div class="tree-item" id="tree-godot-manual">
+                    <span class="tree-icon">✏️</span><span class="tree-label">手動輸入路徑…</span>
+                </div>
+                <div class="tree-item" id="tree-godot-filedialog">
+                    <span class="tree-icon">📁</span><span class="tree-label">檔案選擇器…</span>
+                </div>
+                <div class="tree-item" id="tree-godot-reconnect">
+                    <span class="tree-icon">🔄</span><span class="tree-label">重新連接</span>
+                </div>
+            </div>
+
+            <!-- Skills 列表 -->
+            <div class="tree-container" id="tree-skills" style="display:none;">
+                <div id="tree-skills-list">
+                    <div class="empty-hint">載入中…</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 中央編輯區 ═══ -->
+        <div class="panel-center">
+            <div class="editor-tabs" id="editor-tabs">
+                <div class="editor-tab active" data-page="page-dashboard">
+                    <span class="tab-icon">📊</span> 儀表板
+                </div>
+                <div class="editor-tab" data-page="page-projects">
+                    <span class="tab-icon">📂</span> 專案管理
+                </div>
+                <div class="editor-tab" data-page="page-godot">
+                    <span class="tab-icon">🔧</span> Godot 橋接
+                </div>
+                <div class="editor-tab" data-page="page-files">
+                    <span class="tab-icon">📁</span> 檔案瀏覽器
+                </div>
+                <div class="editor-tab" data-page="page-editor">
+                    <span class="tab-icon">📝</span> 編輯器
+                </div>
+                <div class="editor-tab" data-page="page-scene">
+                    <span class="tab-icon">🎬</span> 場景
+                </div>
+                <div class="editor-tab" data-page="page-console">
+                    <span class="tab-icon">📟</span> Console
+                </div>
+                <div class="editor-tab" data-page="page-build">
+                    <span class="tab-icon">📦</span> 建置
+                </div>
+            </div>
+
+            <div class="editor-content">
+                <!-- 儀表板 -->
+                <div class="editor-page active" id="page-dashboard">
+                    <div class="stats-row" id="stats-row">
+                        <div class="stat-card primary">
+                            <span class="stat-value" id="stat-projects">0</span>
+                            <span class="stat-label">專案</span>
+                        </div>
+                        <div class="stat-card success">
+                            <span class="stat-value" id="stat-phase">—</span>
+                            <span class="stat-label">當前階段</span>
+                        </div>
+                        <div class="stat-card warning">
+                            <span class="stat-value">7</span>
+                            <span class="stat-label">開發階段</span>
+                        </div>
+                        <div class="stat-card primary">
+                            <span class="stat-value" id="stat-godot">—</span>
+                            <span class="stat-label">Godot 狀態</span>
+                        </div>
+                    </div>
+                    <div class="section-title">📊 開發進度</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+                        <span class="progress-label" id="progress-label">載入中...</span>
+                    </div>
+                    <div class="section-title">📋 開發階段路線圖</div>
+                    <div id="phase-timeline"></div>
+                    <div class="section-title">📂 活躍專案</div>
+                    <div id="active-project-card">
+                        <div class="empty-hint">尚無專案，前往「專案管理」建立第一個遊戲專案</div>
+                    </div>
+                </div>
+
+                <!-- 專案管理 -->
+                <div class="editor-page" id="page-projects">
+                    <div class="form-card">
+                        <h3>🆕 建立新專案</h3>
+                        <div class="form-group">
+                            <label>專案名稱</label>
+                            <input type="text" id="proj-name" placeholder="我的 Roguelike 遊戲">
+                        </div>
+                        <div class="form-group">
+                            <label>遊戲類型</label>
+                            <input type="text" id="proj-genre" placeholder="Roguelike / 平台 / RPG...">
+                        </div>
+                        <div class="form-group">
+                            <label>Godot 路徑（選填）</label>
+                            <div class="input-row">
+                                <input type="text" id="proj-godot" placeholder="自動偵測或手動輸入 .exe 路徑">
+                                <button class="btn btn-default btn-sm" id="btn-detect-godot-form">🔍 偵測</button>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="btn-create-project">建立專案</button>
+                    </div>
+                    <div class="section-title" style="margin-top:20px;">所有專案</div>
+                    <div id="project-list"><div class="empty-hint">尚無專案</div></div>
+                </div>
+
+                <!-- Godot 橋接 -->
+                <div class="editor-page" id="page-godot">
+                    <div class="form-card">
+                        <h3>🔍 Godot 引擎狀態</h3>
+                        <div class="form-group">
+                            <label>Godot 執行檔路徑</label>
+                            <div class="input-row">
+                                <input type="text" id="godot-path-input" placeholder="自動偵測或手動輸入完整路徑">
+                                <button class="btn btn-primary btn-sm" id="btn-godot-set-path">✔ 設定</button>
+                            </div>
+                            <div class="form-hint">支援手動輸入任意路徑，設定後自動驗證版本</div>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:8px;">
+                            <button class="btn btn-default btn-sm" id="btn-godot-detect">🔍 快速掃描</button>
+                            <button class="btn btn-default btn-sm" id="btn-godot-deep-search">🕵️ 深度搜尋</button>
+                            <button class="btn btn-default btn-sm" id="btn-godot-filedialog">📁 檔案選擇器</button>
+                        </div>
+                    </div>
+                    <div class="form-card" style="margin-top:16px;">
+                        <h3 id="godot-result-title">📋 偵測結果</h3>
+                        <div id="godot-result">
+                            <div class="empty-hint">尚未掃描，點擊上方按鈕開始</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 📁 檔案瀏覽器 -->
+                <div class="editor-page" id="page-files">
+                    <div style="display:flex;gap:12px;margin-bottom:12px;">
+                        <button class="btn btn-default btn-sm" id="btn-files-refresh">🔄 重新整理</button>
+                        <span style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;" id="files-breadcrumb">/</span>
+                    </div>
+                    <div id="file-browser-content">
+                        <div class="empty-hint">請先連接 Godot 並設定專案</div>
+                    </div>
+                </div>
+
+                <!-- 📝 GDScript 編輯器 -->
+                <div class="editor-page" id="page-editor" style="padding:0;">
+                    <div class="gd-editor-container" style="height:100%;">
+                        <div class="gd-editor-header">
+                            <span class="file-info">📝 <span class="file-name" id="editor-filename">尚未開啟檔案</span></span>
+                            <div style="display:flex;gap:6px;">
+                                <button class="btn btn-primary btn-sm" id="btn-editor-save">💾 儲存</button>
+                                <button class="btn btn-default btn-sm" id="btn-editor-reload">🔄 重新載入</button>
+                            </div>
+                        </div>
+                        <div class="gd-editor-body">
+                            <div class="line-numbers" id="line-numbers">1</div>
+                            <textarea id="gd-editor-textarea" placeholder="從檔案瀏覽器點擊 .gd 檔案開啟編輯…" spellcheck="false"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 🎬 場景檢視器 -->
+                <div class="editor-page" id="page-scene">
+                    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center;">
+                        <span style="font-size:12px;color:var(--text-secondary);" id="scene-filename">尚未開啟場景</span>
+                        <button class="btn btn-default btn-sm" id="btn-scene-reload" style="display:none;">🔄 重新載入</button>
+                    </div>
+                    <div id="scene-content">
+                        <div class="empty-hint">從檔案瀏覽器點擊 .tscn 檔案開啟場景</div>
+                    </div>
+                </div>
+
+                <!-- 📟 Console -->
+                <div class="editor-page" id="page-console" style="padding:0;">
+                    <div class="console-container" style="height:100%;">
+                        <div class="console-resize-handle" id="console-resize-handle" title="拖曳調整高度"></div>
+                        <div class="console-header" id="console-header">
+                            <span>📟 輸出記錄</span>
+                            <div style="display:flex;gap:6px;">
+                                <button class="btn btn-default btn-xs" id="btn-console-clear">🗑 清除</button>
+                                <button class="btn btn-default btn-xs" id="btn-console-test">▶ 測試 Godot 腳本</button>
+                            </div>
+                        </div>
+                        <div class="console-output" id="console-output">
+                            <div class="console-line time">[--:--:--] Console 就緒</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 📦 建置面板 -->
+                <div class="editor-page" id="page-build">
+                    <div class="form-card">
+                        <h3>📦 匯出專案</h3>
+                        <div style="display:flex;gap:8px;margin-bottom:14px;">
+                            <button class="btn btn-default btn-sm" id="btn-build-load-presets">🔄 載入匯出預設</button>
+                        </div>
+                        <div id="build-presets-list">
+                            <div class="empty-hint">請先連接 Godot 專案，再點擊「載入匯出預設」</div>
+                        </div>
+                    </div>
+                    <div class="form-card" style="margin-top:16px;">
+                        <h3>▶ Headless 執行</h3>
+                        <div class="form-group">
+                            <label>GDScript 路徑（相對於專案根目錄）</label>
+                            <input type="text" id="build-script-path" placeholder="scripts/test.gd">
+                        </div>
+                        <button class="btn btn-primary" id="btn-build-run">▶ 執行 GDScript</button>
+                        <div id="build-run-result" style="margin-top:12px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 右側檢查器面板 ═══ -->
+        <div class="panel-right" id="inspector">
+            <div class="inspector-header"><span>📋 檢查器</span></div>
+            <div class="inspector-content" id="inspector-content">
+                <div class="inspector-group" id="inspector-project">
+                    <div class="inspector-group-title">📦 專案屬性</div>
+                    <div class="inspector-group-body">
+                        <div class="inspector-row"><label>名稱</label><span class="value" id="insp-name">—</span></div>
+                        <div class="inspector-row"><label>類型</label><span class="value" id="insp-genre">—</span></div>
+                        <div class="inspector-row"><label>階段</label><span class="value accent" id="insp-phase">—</span></div>
+                        <div class="inspector-row"><label>建立日期</label><span class="value" id="insp-date">—</span></div>
+                    </div>
+                </div>
+                <div class="inspector-group" id="inspector-godot">
+                    <div class="inspector-group-title">🎮 Godot 引擎</div>
+                    <div class="inspector-group-body">
+                        <div class="inspector-row"><label>版本</label><span class="value accent" id="insp-godot-ver">—</span></div>
+                        <div class="inspector-row"><label>路徑</label><span class="value" id="insp-godot-path" style="font-size:10px;">—</span></div>
+                        <div class="inspector-row"><label>連線</label><span class="value" id="insp-godot-status">—</span></div>
+                        <div class="inspector-row"><label>Heartbeat</label><span class="value" id="insp-godot-hb">—</span></div>
+                    </div>
+                </div>
+                <div class="inspector-group">
+                    <div class="inspector-group-title">🖥 系統狀態</div>
+                    <div class="inspector-group-body">
+                        <div class="inspector-row"><label>版本</label><span class="value" id="insp-version">v2.0</span></div>
+                        <div class="inspector-row"><label>Skills</label><span class="value accent" id="insp-skills">40</span></div>
+                        <div class="inspector-row"><label>Port</label><span class="value">5003</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 底部狀態列 ═══ -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="heartbeat-dot alive" id="status-dot"></span>
+                <span id="status-text">Alice Game Studio v2.0</span>
+            </div>
+            <div class="status-item">
+                <span id="status-godot">Godot: 掃描中…</span>
+            </div>
+            <div class="status-item">
+                <span id="status-hb">💓 —</span>
+            </div>
+            <div class="status-item" style="margin-left:auto;">
+                <span id="status-project">無活躍專案</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script>
+    // ═══════════════════════════════════════
+    //  Alice Game Studio — 前端邏輯 v2.0
+    // ═══════════════════════════════════════
+
+    var heartbeatTimer = null;
+    var currentFilePath = null;  // 當前編輯器開啟的檔案
+
+    // ── Toast ──
+    function toast(msg, type) {
+        type = type || 'info';
+        var $t = $('<div class="toast toast-'+type+'">'+msg+'</div>');
+        $('#toast-container').append($t);
+        setTimeout(function(){ $t.fadeOut(300, function(){ $t.remove(); }); }, 2500);
+    }
+
+    // ── Console log ──
+    function consoleLog(msg, cls) {
+        cls = cls || 'info';
+        var now = new Date();
+        var ts = ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2)+':'+('0'+now.getSeconds()).slice(-2);
+        $('#console-output').append('<div class="console-line '+cls+'"><span class="time">['+ts+']</span> '+msg+'</div>');
+        var out = $('#console-output');
+        out.scrollTop(out[0].scrollHeight);
+    }
+
+    // ── 左側 Dock Tab 切換 ──
+    $('.dock-tab').on('click', function() {
+        $('.dock-tab').removeClass('active');
+        $(this).addClass('active');
+        var treeId = 'tree-' + $(this).data('tree');
+        $('.tree-container').hide();
+        $('#' + treeId).show();
+        if ($(this).data('tree') === 'skills') loadSkills();
+    });
+
+    // ── 中央編輯區分頁切換 ──
+    $(document).on('click', '.editor-tab', function() {
+        $('.editor-tab').removeClass('active');
+        $(this).addClass('active');
+        var pageId = $(this).data('page');
+        $('.editor-page').removeClass('active');
+        $('#' + pageId).addClass('active');
+        if (pageId === 'page-files') loadFileBrowser('');
+        if (pageId === 'page-build') loadBuildPresets();
+    });
+
+    // ── Phase 時間線 ──
+    function renderPhaseTimeline(currentPhase) {
+        var phases = [
+            {id:1, name:'Concept', icon:'💡', desc:'創意發想、核心循環'},
+            {id:2, name:'Systems Design', icon:'📐', desc:'GDD 寫作、設計審查'},
+            {id:3, name:'Technical Setup', icon:'🔧', desc:'架構、ADR、美術聖經'},
+            {id:4, name:'Pre-Production', icon:'🏗️', desc:'原型、Epic、垂直切片'},
+            {id:5, name:'Production', icon:'⚙️', desc:'Story 實現、Sprint'},
+            {id:6, name:'Polish', icon:'✨', desc:'效能、平衡、試玩'},
+            {id:7, name:'Release', icon:'🚀', desc:'發布、變更日誌'}
+        ];
+        var html = '', treeHtml = '';
+        phases.forEach(function(p) {
+            var cls = p.id < currentPhase ? 'done' : (p.id === currentPhase ? 'current' : 'pending');
+            html += '<div class="tree-item '+cls+'">';
+            html += '<span class="tree-icon">'+p.icon+'</span><div style="flex:1;">';
+            html += '<span style="display:block;font-weight:600;">Phase '+p.id+': '+p.name+'</span>';
+            html += '<span style="display:block;font-size:11px;color:var(--text-muted);">'+p.desc+'</span>';
+            html += '</div>';
+            if (cls==='done') html += '<span class="badge badge-done">✓</span>';
+            else if (cls==='current') html += '<span class="badge badge-current">進行中</span>';
+            html += '</div>';
+            treeHtml += '<div class="tree-item '+cls+'" data-phase="'+p.id+'">';
+            treeHtml += '<span class="tree-icon">'+p.icon+'</span><span class="tree-label">Phase '+p.id+': '+p.name+'</span>';
+            if (cls==='current') treeHtml += '<span class="tree-badge">●</span>';
+            treeHtml += '</div>';
+        });
+        $('#phase-timeline').html(html);
+        $('#tree-phases').html(treeHtml);
+    }
+
+    // ── 更新檢查器 ──
+    function updateInspector(project) {
+        if (project) {
+            $('#insp-name').text(project.name);
+            $('#insp-genre').text(project.genre || '未分類');
+            $('#insp-phase').text('Phase '+project.current_phase);
+            $('#insp-date').text((project.created_at||'').slice(0,10));
+            $('#insp-godot-path').text(project.godot_path || '未設定');
+            $('#insp-godot-ver').text(project.godot_version || '—');
+            $('#insp-godot-status').text(project.godot_path ? '✅ 已設定' : '⚠ 未設定');
+            $('#inspector-project,#inspector-godot').show();
+        } else {
+            $('#insp-name,#insp-genre,#insp-phase,#insp-date,#insp-godot-path,#insp-godot-ver').text('—');
+            $('#insp-godot-status').text('—');
+        }
+    }
+
+    // ── 狀態列 ──
+    function updateStatusBar(godotStatus, projectName) {
+        $('#status-godot').text('Godot: '+(godotStatus||'未偵測'));
+        $('#status-project').text(projectName||'無活躍專案');
+        if (projectName) $('#topbar-project-name').text('📁 '+projectName);
+        else $('#topbar-project-name').text('— 無活躍專案 —');
+    }
+
+    // ═══════════════ 儀表板 ═══════════════
+    function loadDashboard() {
+        $.get('/api/projects', function(data) {
+            var projects = data.projects || [];
+            $('#stat-projects').text(projects.length);
+            var active = projects.find(function(p){ return p.id===data.active_project; });
+            if (active) {
+                $('#stat-phase').text('Phase '+active.current_phase);
+                renderPhaseTimeline(active.current_phase);
+                $('#active-project-card').html(
+                    '<div class="project-card active" style="border-color:var(--accent);">'+
+                    '<div class="project-card-content">'+
+                    '<h3>'+active.name+'</h3>'+
+                    '<span class="badge badge-active">Phase '+active.current_phase+'</span>'+
+                    '<span class="badge">'+(active.genre||'未分類')+'</span>'+
+                    '<span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Godot: '+(active.godot_path||'未設定')+'</span>'+
+                    '</div></div>');
+                updateInspector(active);
+                updateStatusBar(active.godot_path?'已設定':'未設定', active.name);
+            } else {
+                $('#stat-phase').text('—');
+                renderPhaseTimeline(0);
+                $('#active-project-card').html('<div class="empty-hint">尚無專案</div>');
+                updateInspector(null);
+                updateStatusBar(null, null);
+            }
+        });
+    }
+
+    // ═══════════════ 專案清單 ═══════════════
+    function loadProjects() {
+        $.get('/api/projects', function(data) {
+            var projects = data.projects||[], activeId = data.active_project;
+            if (projects.length===0) { $('#project-list').html('<div class="empty-hint">尚無專案</div>'); }
+            else {
+                var html = '';
+                projects.forEach(function(p) {
+                    var isActive = p.id===activeId;
+                    html += '<div class="project-card'+(isActive?' active':'')+'">';
+                    html += '<div class="project-card-content">';
+                    html += '<h3>'+p.name+(isActive?' <span class="badge badge-active">活躍</span>':'')+'</h3>';
+                    html += '<span class="badge">Phase '+p.current_phase+'</span>';
+                    html += '<span class="badge">'+(p.genre||'未分類')+'</span>';
+                    html += '<span style="font-size:11px;color:var(--text-muted);display:block;margin-top:4px;">建立於 '+(p.created_at||'').slice(0,10)+'</span></div>';
+                    if (!isActive) html += '<button class="btn btn-primary btn-sm btn-activate" data-id="'+p.id+'">切換至此</button>';
+                    html += '</div>';
+                });
+                $('#project-list').html(html);
+            }
+            var treeHtml = '';
+            projects.forEach(function(p) {
+                var isActive = p.id===activeId;
+                treeHtml += '<div class="tree-item'+(isActive?' selected':'')+'" data-project-id="'+p.id+'">';
+                treeHtml += '<span class="tree-icon">'+(isActive?'📁':'📄')+'</span>';
+                treeHtml += '<span class="tree-label">'+p.name+'</span>';
+                treeHtml += '<span class="tree-badge">P'+p.current_phase+'</span></div>';
+            });
+            $('#tree-project-list').html(treeHtml);
+            $('.btn-activate').off('click').on('click', function() {
+                $.post('/api/projects/'+$(this).data('id')+'/activate', function(){ loadAll(); toast('已切換專案','success'); });
+            });
+        });
+    }
+
+    // ═══════════════ 進度 ═══════════════
+    function loadProgress() {
+        $.get('/api/progress', function(data) {
+            $('#progress-fill').css('width', data.progress_pct+'%');
+            $('#progress-label').text(data.progress_pct+'% — '+data.total_skills+' Skills / '+data.total_phases+' Phases');
+            $('#insp-skills').text(data.total_skills);
+        });
+    }
+
+    // ── 建立專案 ──
+    $('#btn-create-project').on('click', function() {
+        var name = $('#proj-name').val().trim(), genre = $('#proj-genre').val().trim(), godot = $('#proj-godot').val().trim();
+        if (!name) return toast('請輸入專案名稱','error');
+        $.ajax({
+            url:'/api/projects', method:'POST', contentType:'application/json',
+            data:JSON.stringify({name:name, genre:genre, godot_path:godot}),
+            success:function(){ $('#proj-name,#proj-genre').val(''); toast('專案「'+name+'」建立成功！','success'); loadAll(); },
+            error:function(){ toast('建立失敗','error'); }
+        });
+    });
+
+    // ═══════════════ Godot 偵測與設定 ═══════════════
+    function detectGodot(populateInput) {
+        $.get('/api/godot/detect', function(data) {
+            var html = '';
+            if (data.found) {
+                html += '<p style="color:var(--success);margin-bottom:8px;">✅ 找到 '+data.paths.length+' 個 Godot 安裝：</p>';
+                data.paths.forEach(function(p) {
+                    html += '<div class="godot-path-item"><span class="path-text">'+p+'</span><button class="btn btn-primary btn-xs btn-use-godot" data-path="'+p+'">使用</button></div>';
+                });
+                if (populateInput && data.paths.length>0) { $('#proj-godot,#godot-path-input').val(data.paths[0]); }
+                updateStatusBar('✅ 已找到', null); $('#stat-godot').text('✅');
+                consoleLog('Godot 快速掃描：找到 '+data.paths.length+' 個安裝', 'success');
+            } else {
+                html += '<p style="color:var(--warning);">⚠ 快速掃描未找到 Godot</p><p style="font-size:11px;color:var(--text-muted);margin-top:4px;">請嘗試「深度搜尋」或手動輸入路徑</p>';
+                updateStatusBar('❌ 未找到', null); $('#stat-godot').text('❌');
+                consoleLog('Godot 快速掃描：未找到', 'warn');
+            }
+            $('#godot-result').html(html); bindGodotUseButtons();
+        });
+    }
+
+    function deepSearchGodot() {
+        $('#godot-result').html('<div class="empty-hint">🔍 正在深度搜尋所有磁碟…</div>');
+        consoleLog('開始深度搜尋 Godot…', 'info');
+        $.get('/api/godot/bridge/search', function(data) {
+            var html = '';
+            if (data.found) {
+                html += '<p style="color:var(--success);margin-bottom:8px;">✅ 深度搜尋找到 '+data.count+' 個 Godot 安裝：</p>';
+                (data.installations||[]).forEach(function(inst) {
+                    html += '<div class="godot-path-item"><div><span class="path-text" style="display:block;">'+inst.path+'</span><span class="version-text">'+(inst.version||'')+'</span></div><button class="btn btn-primary btn-xs btn-use-godot" data-path="'+inst.path+'">使用</button></div>';
+                });
+                consoleLog('深度搜尋：找到 '+data.count+' 個安裝', 'success');
+            } else {
+                html += '<p style="color:var(--danger);">❌ 深度搜尋也未找到 Godot</p>';
+                consoleLog('深度搜尋：未找到', 'error');
+            }
+            $('#godot-result').html(html); $('#godot-result-title').text('📋 深度搜尋結果');
+            bindGodotUseButtons();
+        }).fail(function() { $('#godot-result').html('<p style="color:var(--danger);">❌ 搜尋失敗</p>'); consoleLog('深度搜尋失敗','error'); });
+    }
+
+    function setGodotPath(path) {
+        if (!path) path = $('#godot-path-input').val().trim();
+        if (!path) return toast('請輸入 Godot 路徑','error');
+        consoleLog('設定 Godot 路徑：'+path, 'info');
+        $.ajax({
+            url:'/api/godot/bridge/set-path', method:'POST', contentType:'application/json',
+            data:JSON.stringify({godot_path:path}),
+            success:function(res) {
+                if (res.success) {
+                    $('#godot-result').html('<p style="color:var(--success);">✅ Godot 路徑已設定</p><div class="godot-path-item"><span class="path-text">'+res.path+'</span><span class="version-text">'+res.version+'</span></div>');
+                    $('#godot-result-title').text('📋 驗證結果');
+                    $('#proj-godot,#godot-path-input').val(res.path);
+                    $('#insp-godot-path').text(res.path); $('#insp-godot-ver').text(res.version); $('#insp-godot-status').text('✅ 已設定');
+                    updateStatusBar('✅ '+(res.version||''), null); $('#stat-godot').text('✅');
+                    toast('Godot 路徑設定成功','success');
+                    consoleLog('Godot 設定成功：'+res.version, 'success');
+                } else {
+                    $('#godot-result').html('<p style="color:var(--danger);">❌ 驗證失敗：'+(res.error||res.message||'未知錯誤')+'</p>');
+                    toast('Godot 路徑無效','error');
+                    consoleLog('Godot 驗證失敗：'+(res.error||res.message), 'error');
+                }
+            },
+            error:function(){ toast('設定失敗','error'); }
+        });
+    }
+
+    function openFileDialog() {
+        consoleLog('開啟檔案選擇器…', 'info');
+        $.ajax({
+            url:'/api/godot/bridge/file-dialog', method:'POST', contentType:'application/json',
+            data:'{}',
+            success:function(res) {
+                if (res.success) {
+                    $('#godot-result').html('<p style="color:var(--success);">✅ 已選擇並驗證</p><div class="godot-path-item"><span class="path-text">'+res.path+'</span><span class="version-text">'+res.version+'</span></div>');
+                    $('#godot-result-title').text('📋 檔案選擇器結果');
+                    $('#proj-godot,#godot-path-input').val(res.path);
+                    $('#insp-godot-path').text(res.path); $('#insp-godot-ver').text(res.version); $('#insp-godot-status').text('✅ 已設定');
+                    updateStatusBar('✅ '+(res.version||''), null); $('#stat-godot').text('✅');
+                    toast('已選擇 Godot','success');
+                    consoleLog('檔案選擇器：'+res.path+' ('+res.version+')', 'success');
+                } else {
+                    toast(res.error||'未選擇檔案','error');
+                    consoleLog('檔案選擇器：'+res.error, 'error');
+                }
+            },
+            error:function(xhr) {
+                var msg = '檔案選擇失敗';
+                try { var r = JSON.parse(xhr.responseText); msg = r.message||r.error||msg; } catch(e){}
+                toast(msg,'error'); consoleLog('檔案選擇器失敗：'+msg,'error');
+            }
+        });
+    }
+
+    function bindGodotUseButtons() {
+        $('.btn-use-godot').off('click').on('click', function() { setGodotPath($(this).data('path')); });
+    }
+
+    // ── Godot 按鈕事件 ──
+    $('#btn-godot-detect,#btn-detect-godot-form').on('click', function(){ detectGodot(true); });
+    $('#btn-godot-deep-search').on('click', deepSearchGodot);
+    $('#btn-godot-set-path').on('click', function(){ setGodotPath(); });
+    $('#btn-godot-filedialog').on('click', openFileDialog);
+    $('#tree-godot-detect').on('click', function(){ detectGodot(true); });
+    $('#tree-godot-deep-search').on('click', deepSearchGodot);
+    $('#tree-godot-manual').on('click', function(){ $('.editor-tab[data-page="page-godot"]').trigger('click'); $('#godot-path-input').focus(); });
+    $('#tree-godot-filedialog').on('click', openFileDialog);
+    $('#tree-godot-reconnect').on('click', function() {
+        consoleLog('手動重新連接 Godot…', 'info');
+        $.post('/api/godot/bridge/reconnect', '{}', function(res) {
+            if (res.success) { toast('Godot 已重新連接','success'); consoleLog('重新連接成功','success'); }
+            else { toast('重連失敗：'+(res.error||res.message),'error'); consoleLog('重連失敗','error'); }
+        }).fail(function(){ toast('重連失敗','error'); });
+    });
+    $('#tree-new-project').on('click', function(){ $('.editor-tab[data-page="page-projects"]').trigger('click'); $('#proj-name').focus(); });
+
+    // ── 左側樹點擊切換中央分頁 ──
+    $(document).on('click', '#tree-phases .tree-item', function(){ $('.editor-tab[data-page="page-dashboard"]').trigger('click'); });
+    $(document).on('click', '#tree-project-list .tree-item', function() {
+        $.post('/api/projects/'+$(this).data('project-id')+'/activate', function(){ loadAll(); $('.editor-tab[data-page="page-dashboard"]').trigger('click'); toast('已切換專案','success'); });
+    });
+
+    // ── 選單列 ──
+    $('#menu-run').on('click', function(){ $('.editor-tab[data-page="page-console"]').trigger('click'); });
+    $('#menu-build').on('click', function(){ $('.editor-tab[data-page="page-build"]').trigger('click'); });
+
+    // ═══════════════ 📁 檔案瀏覽器 ═══════════════
+    function loadFileBrowser(subdir) {
+        subdir = subdir || '';
+        $('#files-breadcrumb').text('/'+subdir);
+        $('#file-browser-content').html('<div class="empty-hint">🔄 載入中…</div>');
+        $.ajax({
+            url:'/api/godot/bridge/list-files', method:'POST', contentType:'application/json',
+            data:JSON.stringify({subdir:subdir}),
+            success:function(data) {
+                if (!data.success && data.status!=='success') {
+                    $('#file-browser-content').html('<div class="empty-hint">⚠ '+(data.error||data.message||'無法載入')+'<br><small>請確認 Godot 已連接且專案已開啟</small></div>');
+                    return;
+                }
+                var files = data.files||[];
+                if (files.length===0) {
+                    $('#file-browser-content').html('<div class="empty-hint">📭 此目錄為空</div>');
+                    return;
+                }
+                var html = '<div style="display:flex;flex-direction:column;gap:2px;">';
+                // 上一層
+                if (subdir) {
+                    var parent = subdir.split('/').slice(0,-1).join('/');
+                    html += '<div class="tree-item folder file-browser-item" data-path="'+parent+'" data-is-dir="true">';
+                    html += '<span class="tree-icon">📂</span><span class="tree-label" style="color:var(--accent);">.. (上層)</span></div>';
+                }
+                files.forEach(function(f) {
+                    var isDir = f.is_dir || f.type==='dir';
+                    var icon = isDir ? '📁' : getFileIcon(f.name);
+                    var cls = isDir ? 'folder' : getFileCls(f.name);
+                    html += '<div class="tree-item '+cls+' file-browser-item" data-path="'+(subdir?subdir+'/':'')+f.name+'" data-is-dir="'+isDir+'">';
+                    html += '<span class="tree-icon">'+icon+'</span>';
+                    html += '<span class="tree-label">'+f.name+'</span>';
+                    if (!isDir && f.size) html += '<span class="tree-badge">'+formatSize(f.size)+'</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+                $('#file-browser-content').html(html);
+            },
+            error:function(xhr) {
+                var msg = '無法載入檔案列表';
+                try { var r = JSON.parse(xhr.responseText); msg = r.message||r.error||msg; } catch(e){}
+                $('#file-browser-content').html('<div class="empty-hint">⚠ '+msg+'</div>');
+            }
+        });
+    }
+
+    function getFileIcon(name) {
+        var ext = name.split('.').pop().toLowerCase();
+        var map = {gd:'🔷', tscn:'🎬', tres:'📦', png:'🖼️', jpg:'🖼️', jpeg:'🖼️', svg:'🖼️', wav:'🔊', mp3:'🔊', ogg:'🔊', ttf:'🔤', import:'📥', md:'📝', txt:'📄', json:'📋', cfg:'⚙️', ini:'⚙️'};
+        return map[ext] || '📄';
+    }
+    function getFileCls(name) {
+        var ext = name.split('.').pop().toLowerCase();
+        if (ext==='gd') return 'gdscript';
+        if (ext==='tscn'||ext==='tres') return 'scene';
+        if (['png','jpg','jpeg','svg','bmp'].includes(ext)) return 'image';
+        return 'other';
+    }
+    function formatSize(bytes) {
+        if (!bytes) return '';
+        if (bytes<1024) return bytes+' B';
+        if (bytes<1048576) return (bytes/1024).toFixed(1)+' KB';
+        return (bytes/1048576).toFixed(1)+' MB';
+    }
+
+    $('#btn-files-refresh').on('click', function(){ loadFileBrowser(''); });
+
+    // 點擊檔案項目
+    $(document).on('click', '.file-browser-item', function() {
+        var path = $(this).data('path'), isDir = $(this).data('is-dir');
+        if (isDir===true || isDir==='true') { loadFileBrowser(path); return; }
+        var ext = path.split('.').pop().toLowerCase();
+        if (ext === 'gd') openGDScript(path);
+        else if (ext === 'tscn') openScene(path);
+        else previewFile(path);
+    });
+
+    function previewFile(path) {
+        $.ajax({
+            url:'/api/godot/bridge/read-script', method:'POST', contentType:'application/json',
+            data:JSON.stringify({path:path}),
+            success:function(res) {
+                var html = '<div class="section-title">📄 '+path+'</div>';
+                if (res.content) {
+                    html += '<div class="file-preview-text">'+escapeHtml(res.content)+'</div>';
+                } else {
+                    html += '<div class="empty-hint">無法預覽此檔案類型</div>';
+                }
+                showModal('檔案預覽', html);
+            },
+            error:function(){ showModal('檔案預覽', '<div class="empty-hint">無法讀取此檔案</div>'); }
+        });
+    }
+
+    function escapeHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function showModal(title, html) {
+        // 簡單 modal
+        var m = $('#quick-modal');
+        if (!m.length) {
+            $('body').append('<div id="quick-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:99;display:flex;align-items:center;justify-content:center;"><div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;max-width:700px;max-height:80vh;overflow-y:auto;width:90%;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h3 id="modal-title" style="margin:0;"></h3><button class="btn btn-default btn-sm" id="modal-close">✕</button></div><div id="modal-body"></div></div></div>');
+            $(document).on('click', '#modal-close', function(){ $('#quick-modal').remove(); });
+            $(document).on('click', '#quick-modal', function(e){ if(e.target===this) $('#quick-modal').remove(); });
+        }
+        $('#modal-title').text(title);
+        $('#modal-body').html(html);
+        $('#quick-modal').show();
+    }
+
+    // ═══════════════ 📝 GDScript 編輯器 ═══════════════
+    function openGDScript(path) {
+        currentFilePath = path;
+        $('#editor-filename').text(path);
+        consoleLog('開啟 GDScript：'+path, 'info');
+        $.ajax({
+            url:'/api/godot/bridge/read-script', method:'POST', contentType:'application/json',
+            data:JSON.stringify({path:path}),
+            success:function(res) {
+                if (res.content!==undefined) {
+                    $('#gd-editor-textarea').val(res.content);
+                    updateLineNumbers();
+                    toast('已載入 '+path, 'success');
+                    consoleLog('已載入 '+path+' ('+res.lines+' 行)', 'success');
+                } else {
+                    toast('無法讀取：'+(res.error||res.message||'未知錯誤'), 'error');
+                    consoleLog('讀取失敗：'+path, 'error');
+                }
+            },
+            error:function(){ toast('讀取失敗','error'); consoleLog('讀取失敗：'+path,'error'); }
+        });
+        $('.editor-tab[data-page="page-editor"]').trigger('click');
+    }
+
+    $('#gd-editor-textarea').on('input', updateLineNumbers);
+    $('#gd-editor-textarea').on('scroll', function() {
+        $('#line-numbers').scrollTop($(this).scrollTop());
+    });
+
+    function updateLineNumbers() {
+        var lines = $('#gd-editor-textarea').val().split('\n').length;
+        var nums = '';
+        for (var i=1; i<=lines; i++) nums += i+'\n';
+        $('#line-numbers').text(nums);
+    }
+
+    $('#btn-editor-save').on('click', function() {
+        if (!currentFilePath) return toast('尚未開啟檔案', 'error');
+        var content = $('#gd-editor-textarea').val();
+        consoleLog('儲存 GDScript：'+currentFilePath+' ('+content.split('\n').length+' 行)', 'info');
+        $.ajax({
+            url:'/api/godot/bridge/write-script', method:'POST', contentType:'application/json',
+            data:JSON.stringify({path:currentFilePath, content:content}),
+            success:function(res) {
+                if (res.success) { toast('已儲存 '+currentFilePath, 'success'); consoleLog('儲存成功', 'success'); }
+                else { toast('儲存失敗：'+(res.error||res.message), 'error'); consoleLog('儲存失敗：'+(res.error||res.message), 'error'); }
+            },
+            error:function(){ toast('儲存失敗','error'); }
+        });
+    });
+
+    $('#btn-editor-reload').on('click', function() {
+        if (currentFilePath) openGDScript(currentFilePath);
+    });
+
+    // Ctrl+S 快捷鍵
+    $(document).on('keydown', function(e) {
+        if ((e.ctrlKey||e.metaKey) && e.key==='s') {
+            e.preventDefault();
+            if ($('#page-editor').hasClass('active') && currentFilePath) $('#btn-editor-save').trigger('click');
+        }
+    });
+
+    // ═══════════════ 🎬 場景檢視器 ═══════════════
+    function openScene(path) {
+        $('#scene-filename').text(path);
+        $('#scene-content').html('<div class="empty-hint">🔄 載入中…</div>');
+        $('#btn-scene-reload').show().off('click').on('click', function(){ openScene(path); });
+        consoleLog('開啟場景：'+path, 'info');
+        $.ajax({
+            url:'/api/godot/bridge/read-scene', method:'POST', contentType:'application/json',
+            data:JSON.stringify({path:path}),
+            success:function(res) {
+                if (res.nodes) {
+                    var html = '<div class="scene-tree">';
+                    res.nodes.forEach(function(n) {
+                        var depth = n.depth||0;
+                        html += '<div class="scene-node'+(n.type==='root'?' selected':'')+'" style="padding-left:'+(12+depth*20)+'px;">';
+                        html += '<span class="tree-icon">🔹</span>';
+                        html += '<span style="font-weight:600;">'+n.name+'</span>';
+                        html += '<span class="node-type">'+n.type+'</span>';
+                        if (n.path) html += '<span style="font-size:10px;color:var(--text-muted);margin-left:auto;">'+n.path+'</span>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                    $('#scene-content').html(html);
+                    consoleLog('場景載入：'+res.nodes.length+' 個節點', 'success');
+                } else if (res.content) {
+                    $('#scene-content').html('<div class="code-block" style="max-height:500px;overflow-y:auto;">'+escapeHtml(res.content)+'</div>');
+                    consoleLog('場景以文字模式載入', 'info');
+                } else {
+                    $('#scene-content').html('<div class="empty-hint">⚠ 無法解析場景結構</div>');
+                }
+            },
+            error:function(){ $('#scene-content').html('<div class="empty-hint">⚠ 讀取失敗</div>'); consoleLog('場景讀取失敗','error'); }
+        });
+        $('.editor-tab[data-page="page-scene"]').trigger('click');
+    }
+
+    // ═══════════════ 📟 Console ═══════════════
+    $('#btn-console-clear').on('click', function() {
+        $('#console-output').html('<div class="console-line time">['+getTimeStamp()+'] Console 已清除</div>');
+    });
+
+    $('#btn-console-test').on('click', function() {
+        var scriptPath = $('#build-script-path').val().trim() || 'scripts/test.gd';
+        consoleLog('執行 GDScript：'+scriptPath, 'info');
+        $.ajax({
+            url:'/api/godot/bridge/run-script', method:'POST', contentType:'application/json',
+            data:JSON.stringify({script_path:scriptPath}),
+            success:function(res) {
+                if (res.success) {
+                    consoleLog('執行成功', 'success');
+                    if (res.output) consoleLog(res.output, 'info');
+                } else {
+                    consoleLog('執行失敗：'+(res.error||res.message||'未知錯誤'), 'error');
+                    if (res.output) consoleLog(res.output, 'error');
+                }
+            },
+            error:function(xhr) {
+                var msg = '執行失敗';
+                try { var r = JSON.parse(xhr.responseText); msg = r.message||r.error||msg; } catch(e){}
+                consoleLog(msg, 'error');
+            }
+        });
+    });
+
+    function getTimeStamp() {
+        var now = new Date();
+        return ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2)+':'+('0'+now.getSeconds()).slice(-2);
+    }
+
+    // Console resize
+    var isResizing = false;
+    $('#console-resize-handle').on('mousedown', function(e) {
+        isResizing = true;
+        e.preventDefault();
+    });
+    $(document).on('mousemove', function(e) {
+        if (!isResizing) return;
+        var consolePage = $('#page-console');
+        var rect = consolePage[0].getBoundingClientRect();
+        var newHeight = window.innerHeight - e.clientY;
+        if (newHeight < 100) newHeight = 100;
+        if (newHeight > window.innerHeight-120) newHeight = window.innerHeight-120;
+        $('#console-output').css('height', newHeight+'px');
+    });
+    $(document).on('mouseup', function() { isResizing = false; });
+
+    // ═══════════════ 📦 建置面板 ═══════════════
+    function loadBuildPresets() {
+        $('#build-presets-list').html('<div class="empty-hint">🔄 載入中…</div>');
+        $.get('/api/godot/bridge/exports', function(data) {
+            var presets = data.presets||[];
+            if (presets.length===0) {
+                $('#build-presets-list').html('<div class="empty-hint">⚠ 沒有匯出預設，請在 Godot 編輯器中設定匯出模板</div>');
+                return;
+            }
+            var html = '';
+            presets.forEach(function(p) {
+                html += '<div class="build-preset-card">';
+                html += '<div class="build-preset-info"><h4>'+p.name+'</h4><span>'+p.platform+'</span></div>';
+                html += '<button class="btn btn-primary btn-sm btn-export-preset" data-preset="'+p.name+'">📦 匯出</button>';
+                html += '</div>';
+            });
+            $('#build-presets-list').html(html);
+            consoleLog('載入 '+presets.length+' 個匯出預設', 'info');
+        }).fail(function() {
+            $('#build-presets-list').html('<div class="empty-hint">⚠ 無法載入匯出預設，請確認 Godot 已連接</div>');
+        });
+    }
+
+    $('#btn-build-load-presets').on('click', loadBuildPresets);
+
+    $(document).on('click', '.btn-export-preset', function() {
+        var preset = $(this).data('preset');
+        var outputPath = prompt('匯出路徑：', 'build/'+preset.replace(/\s+/g,'_').toLowerCase()+'.exe');
+        if (!outputPath) return;
+        consoleLog('匯出：'+preset+' → '+outputPath, 'info');
+        toast('開始匯出…', 'info');
+        $.ajax({
+            url:'/api/godot/bridge/export', method:'POST', contentType:'application/json',
+            data:JSON.stringify({preset:preset, output_path:outputPath}),
+            success:function(res) {
+                if (res.success) { toast('匯出成功！','success'); consoleLog('匯出成功：'+outputPath,'success'); }
+                else { toast('匯出失敗：'+(res.error||res.message),'error'); consoleLog('匯出失敗','error'); }
+            },
+            error:function(){ toast('匯出失敗','error'); }
+        });
+    });
+
+    $('#btn-build-run').on('click', function() {
+        var scriptPath = $('#build-script-path').val().trim();
+        if (!scriptPath) return toast('請輸入 GDScript 路徑','error');
+        $('#build-run-result').html('<div class="empty-hint">🔄 執行中…</div>');
+        consoleLog('Headless 執行：'+scriptPath, 'info');
+        $.ajax({
+            url:'/api/godot/bridge/run-script', method:'POST', contentType:'application/json',
+            data:JSON.stringify({script_path:scriptPath}),
+            success:function(res) {
+                if (res.success) {
+                    $('#build-run-result').html('<div class="code-block" style="max-height:300px;overflow-y:auto;">'+(res.output?escapeHtml(res.output):'(無輸出)')+'</div>');
+                    consoleLog('Headless 執行成功', 'success');
+                } else {
+                    $('#build-run-result').html('<p style="color:var(--danger);">❌ '+(res.error||res.message||'執行失敗')+'</p>');
+                    consoleLog('Headless 執行失敗：'+(res.error||res.message), 'error');
+                }
+            },
+            error:function(xhr) {
+                var msg = '執行失敗';
+                try { var r = JSON.parse(xhr.responseText); msg = r.message||r.error||msg; } catch(e){}
+                $('#build-run-result').html('<p style="color:var(--danger);">❌ '+msg+'</p>');
+                consoleLog(msg, 'error');
+            }
+        });
+    });
+
+    // ═══════════════ ⚡ Skills 列表 ═══════════════
+    function loadSkills() {
+        $.get('/api/progress', function(data) {
+            var phases = data.phases||[];
+            if (phases.length===0) { $('#tree-skills-list').html('<div class="empty-hint">無法載入</div>'); return; }
+            var html = '';
+            phases.forEach(function(p) {
+                html += '<div class="tree-item" style="font-weight:600;color:var(--accent);">';
+                html += '<span class="tree-icon">'+p.icon+'</span><span class="tree-label">Phase '+p.id+': '+p.name+'</span>';
+                html += '<span class="skill-phase-badge">'+p.skills+' skills</span></div>';
+            });
+            html += '<div style="border-top:1px solid var(--border);margin:8px 0;"></div>';
+            html += '<div class="tree-item"><span class="tree-icon">📊</span><span class="tree-label">總計</span><span class="skill-phase-badge">'+data.total_skills+' skills</span></div>';
+            $('#tree-skills-list').html(html);
+        });
+    }
+
+    // ═══════════════ 💓 Heartbeat ═══════════════
+    function startHeartbeat() {
+        function tick() {
+            $.get('/api/godot/bridge/heartbeat', function(res) {
+                var dot = $('#status-dot');
+                if (res.alive || res.connected || res.status==='ok') {
+                    dot.removeClass('dead').addClass('alive');
+                    $('#status-hb').html('💓 正常');
+                    $('#insp-godot-hb').text('🟢 正常');
+                } else {
+                    dot.removeClass('alive').addClass('dead');
+                    $('#status-hb').html('💔 中斷');
+                    $('#insp-godot-hb').text('🔴 中斷');
+                    // 自動重連
+                    if (res.error) {
+                        consoleLog('Heartbeat 異常，嘗試重連…', 'warn');
+                        $.post('/api/godot/bridge/reconnect', '{}', function(r) {
+                            if (r.success) consoleLog('自動重連成功', 'success');
+                            else consoleLog('自動重連失敗', 'error');
+                        });
+                    }
+                }
+            }).fail(function() {
+                $('#status-dot').removeClass('alive').addClass('dead');
+                $('#status-hb').html('💔 中斷');
+                $('#insp-godot-hb').text('🔴 中斷');
+            });
+        }
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        tick();
+        heartbeatTimer = setInterval(tick, 15000);
+    }
+
+    // ═══════════════ 全載入 ═══════════════
+    function loadAll() {
+        loadDashboard();
+        loadProjects();
+        loadProgress();
+        detectGodot(false);
+    }
+
+    // 啟動
+    loadAll();
+    startHeartbeat();
+    consoleLog('Alice Game Studio v2.0 就緒', 'success');
+    </script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+# Secrets
+.env
+token.json
+credentials.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Database (synced via MEGA)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs & temp
+alice_error.log
+logs/
+Temp/
+*.log
+
+# Large binaries
+MEGA/
+photo/
+backups/
+
+# External copy
+hermes-agent-port/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Memory files (synced via MEGA)
+memory/*.json
+memory/*.db
+
+# GIS state
+gis_monitor_state.json
+.hermes_gis_state.json
+.watchdog_state.json
+
+# IDE
+.vscode/
+.idea/

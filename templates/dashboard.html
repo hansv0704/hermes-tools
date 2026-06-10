@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice AI 自主投資代理人</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0e14; --surface: rgba(35,42,52,0.92); --surface-hover: rgba(45,53,64,0.95);
+            --border: rgba(255,255,255,0.08); --border-glow: rgba(88,166,255,0.2);
+            --text: #e6edf3; --text-dim: #8b949e;
+            --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #8b5cf6;
+            --radius: 12px; --radius-sm: 8px;
+            --gradient-card: linear-gradient(145deg, rgba(35,42,52,0.92) 0%, rgba(22,27,36,0.96) 100%);
+            --gradient-accent: linear-gradient(135deg, #8b5cf6, #6d28d9);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; padding: 8px; }
+        /* ═══ 四象限 Grid 主佈局 ═══ */
+        .terminal-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            grid-template-rows: auto 1fr auto;
+            gap: 8px;
+            min-height: calc(100vh - 16px);
+        }
+        /* 頂部橫跨三欄 */
+        .topbar {
+            grid-column: 1 / -1; grid-row: 1;
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+            padding: 10px 16px;
+            background: var(--gradient-card); border: 1px solid var(--border); border-radius: var(--radius);
+        }
+        /* 底部橫跨三欄 */
+        .bottom-panel {
+            grid-column: 1 / -1; grid-row: 3;
+            background: var(--gradient-card); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 12px 16px; max-height: 260px; overflow-y: auto;
+        }
+        /* 三欄卡片 */
+        .col-left { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+        .col-mid  { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+        .col-right{ grid-column: 3; grid-row: 2; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+
+        @media (max-width: 1100px) {
+            .terminal-grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto auto; }
+            .col-left, .col-mid, .col-right, .bottom-panel { grid-column: 1; }
+            .col-left { grid-row: 2; } .col-mid { grid-row: 3; } .col-right { grid-row: 4; } .bottom-panel { grid-row: 5; }
+        }
+
+        .card, .accent-card {
+            background: var(--gradient-card); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 12px 14px; position: relative;
+        }
+        .card::before, .accent-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }
+        .accent-card { border-left: 3px solid var(--purple); }
+
+        h2 { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        h2 .icon { font-size: 14px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+        .btn, .btn-primary, .btn-danger, .btn-secondary {
+            border: none; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; font-family: inherit; white-space: nowrap;
+        }
+        .btn-primary { background: linear-gradient(135deg, #238636, #2ea043); color: #fff; }
+        .btn-primary:hover { box-shadow: 0 4px 16px rgba(35,134,54,0.3); transform: translateY(-1px); }
+        .btn-primary.purple { background: var(--gradient-accent); }
+        .btn-primary.purple:hover { box-shadow: 0 4px 16px rgba(139,92,246,0.3); }
+        .btn-primary.gold { background: linear-gradient(135deg, #d29922, #b8860b); }
+        .btn-danger { background: linear-gradient(135deg, #da3633, #f85149); color: #fff; }
+        .btn-secondary { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+        .btn-lg { padding: 12px 24px; font-size: 14px; font-weight: 700; border-radius: 10px; }
+        .btn-sm { padding: 4px 8px; font-size: 10px; }
+        .btn-xs { padding: 2px 6px; font-size: 9px; border-radius: 4px; }
+
+        /* Top Bar */
+        .topbar-item { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+        .topbar-item .label { color: var(--text-dim); font-size: 10px; }
+        .topbar-item .value { font-weight: 700; font-size: 13px; }
+        .topbar-divider { width: 1px; height: 20px; background: var(--border); }
+        .tgl-track { width: 40px; height: 20px; border-radius: 10px; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; padding: 2px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); }
+        .tgl-track.on { background: rgba(139,92,246,0.3); border-color: var(--purple); }
+        .tgl-knob { width: 15px; height: 15px; border-radius: 50%; background: var(--text-dim); transition: 0.2s; }
+        .tgl-track.on .tgl-knob { background: var(--purple); transform: translateX(20px); }
+
+        /* Flow */
+        .flow-step { background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); border-radius: 10px; padding: 12px; margin-bottom: 6px; }
+        .flow-step h3 { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
+        .flow-arrow { text-align: center; color: var(--text-dim); font-size: 14px; margin: 1px 0; }
+        .form-row { display: flex; gap: 5px; flex-wrap: wrap; align-items: flex-end; }
+        .form-group { display: flex; flex-direction: column; gap: 2px; }
+        .form-group label { color: var(--text-dim); font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-group input, .form-group select, .form-group textarea {
+            background: rgba(13,17,23,0.8); border: 1px solid var(--border); color: var(--text);
+            padding: 5px 8px; border-radius: 4px; font-size: 11px; outline: none; font-family: inherit; transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
+
+        /* Chat */
+        .chat-box { height: 120px; overflow-y: auto; padding: 8px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 11px; }
+        .chat-msg { margin: 4px 0; line-height: 1.4; }
+        .chat-you { text-align: right; }
+        .chat-you span { background: rgba(88,166,255,0.12); color: var(--accent); padding: 4px 10px; border-radius: 10px 10px 3px 10px; display: inline-block; max-width: 85%; }
+        .chat-ai span { background: rgba(139,92,246,0.1); color: #c4b5fd; padding: 4px 10px; border-radius: 3px 10px 10px 10px; display: inline-block; max-width: 85%; }
+        .chat-sys { text-align: center; color: var(--text-dim); font-size: 10px; }
+
+        /* Tables */
+        .table-wrap { overflow-x: auto; max-height: 200px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        th { text-align: left; padding: 5px 6px; border-bottom: 2px solid var(--border); color: var(--text-dim); font-weight: 500; font-size: 9px; text-transform: uppercase; white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
+        td { padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.03); white-space: nowrap; }
+        tr:hover td { background: rgba(255,255,255,0.015); }
+        .pnl-up { color: var(--green); font-weight: 600; }
+        .pnl-down { color: var(--red); font-weight: 600; }
+
+        /* Badges */
+        .badge-ok { background: rgba(63,185,80,0.15); color: var(--green); }
+        .badge-warn { background: rgba(210,153,34,0.15); color: var(--yellow); }
+        .badge-err { background: rgba(248,81,73,0.15); color: var(--red); }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 500; }
+
+        /* Spinner */
+        .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading { color: var(--text-dim); text-align: center; padding: 10px; font-size: 11px; }
+
+        /* Collapsible */
+        .collapsible-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; font-size: 11px; }
+        .collapsible-header .arrow { transition: transform 0.2s; font-size: 10px; }
+        .collapsible-body { overflow: hidden; transition: max-height 0.3s; }
+        .collapsible-body.collapsed { max-height: 0; }
+        .quick-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+
+        /* Debate */
+        .debate-entry { margin-bottom: 4px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .debate-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(255,255,255,0.02); cursor: pointer; font-size: 10px; }
+        .debate-header:hover { background: rgba(255,255,255,0.04); }
+        .debate-detail { display: none; padding: 0 10px 8px; font-size: 11px; line-height: 1.5; max-height: 300px; overflow-y: auto; }
+        .section-divider { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; }
+        .section-divider .line { flex: 1; height: 1px; background: var(--border); }
+        .section-divider .label { font-size: 10px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; white-space: nowrap; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+        /* Metric cards */
+        .metric-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .metric-card { flex: 1; min-width: 80px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm); padding: 8px 10px; text-align: center; }
+        .metric-card .val { font-size: 16px; font-weight: 700; }
+        .metric-card .lbl { font-size: 9px; color: var(--text-dim); margin-top: 2px; }
+
+        /* Tab */
+        .tab-row { display: flex; gap: 0; margin-bottom: 8px; }
+        .tab-btn { padding: 6px 12px; font-size: 10px; cursor: pointer; background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: var(--text-dim); border-radius: 0; font-family: inherit; }
+        .tab-btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+        .tab-btn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+        .tab-btn.active { background: rgba(88,166,255,0.1); color: var(--accent); border-color: var(--border-glow); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+<div class="terminal-grid">
+
+    <!-- ═══════════════════════ 頂部狀態欄 ═══════════════════════ -->
+    <div class="topbar">
+        <h1 style="font-size:15px;font-weight:700;color:var(--accent);">⚡ Alice AI 自主投資</h1>
+        <div class="topbar-divider"></div>
+        <div class="topbar-item"><span class="label">📊 總持股收益</span><span class="value" id="topbar-pnl" style="cursor:pointer;" onclick="refreshAllHoldingsPnl()" title="點擊刷新">$ --</span></div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-item" style="position:relative;">
+            <span class="label">🔌 券商</span><span class="value" style="color:var(--yellow);" id="topbar-broker-status">● 未連線</span>
+            <button class="btn-sm btn-primary" onclick="toggleSpeedyLogin()">🔑</button>
+            <div id="speedy-login-dropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;z-index:100;min-width:380px;box-shadow:0 4px 24px rgba(0,0,0,0.7);">
+                <div class="form-row">
+                    <div class="form-group"><label>身分證</label><input type="text" id="spd-user-id-top" style="width:85px;"></div>
+                    <div class="form-group"><label>密碼</label><input type="password" id="spd-password-top" style="width:70px;"></div>
+                    <div class="form-group"><label>帳號</label><input type="text" id="spd-account-top" value="0252486" style="width:60px;"></div>
+                    <div class="form-group"><label>分公司</label><input type="text" id="spd-broker-id-top" value="7006" style="width:50px;"></div>
+                    <div class="form-group"><label>憑證</label><input type="password" id="spd-pfx-pwd-top" style="width:70px;"></div>
+                    <button class="btn-primary btn-sm" onclick="speedyConnectTop()">🔑 登入</button>
+                    <button class="btn-sm btn-secondary" onclick="toggleSpeedyLogin()">✕</button>
+                </div>
+                <div id="spd-status-top" style="margin-top:4px;font-size:11px;color:var(--text-dim);"></div>
+            </div>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-item"><span class="label">💵 銀行</span><span class="value" id="topbar-bank">$ --</span><button class="btn-xs btn-secondary" onclick="bankEdit()">✏️</button></div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-item"><span class="label" id="tgl-label">📋 紙上</span><div class="tgl-track on" id="tgl-mode" onclick="toggleMode()"><div class="tgl-knob"></div></div></div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-item">
+            <span class="badge badge-warn" id="topbar-ai-status">⏸️ AI 已停止</span>
+            <button class="btn-primary btn-sm purple" id="topbar-ai-start-btn" onclick="aiStartDirect()" style="margin-left:4px;">▶️ 啟動</button>
+            <button class="btn-danger btn-sm" id="topbar-ai-stop-btn" onclick="aiStopDirect()" style="display:none;margin-left:4px;">⏹️ 停止</button>
+        </div>
+        <span id="topbar-last-tick" style="font-size:9px;color:var(--text-dim);margin-left:auto;"></span>
+    </div>
+
+    <!-- ═══════════════════════ 左欄：資產總覽 + 持股 ═══════════════════════ -->
+    <div class="col-left">
+        <!-- 資產總覽 -->
+        <div class="card">
+            <h2><span class="icon">💰</span>資產總覽</h2>
+            <div class="metric-row">
+                <div class="metric-card"><div class="val" style="color:var(--accent);" id="metric-bank">$ --</div><div class="lbl">銀行現金</div></div>
+                <div class="metric-card"><div class="val" style="color:var(--green);" id="metric-value">$ --</div><div class="lbl">持股市值</div></div>
+            </div>
+            <div class="metric-row" style="margin-top:4px;">
+                <div class="metric-card"><div class="val" id="metric-pnl">$ --</div><div class="lbl">總損益</div></div>
+                <div class="metric-card"><div class="val" style="color:var(--purple);" id="metric-total">$ --</div><div class="lbl">總資產</div></div>
+            </div>
+        </div>
+
+        <!-- AI 投資庫存 -->
+        <div class="card">
+            <h2 class="collapsible-header" onclick="toggleSection('ai-holdings-body')"><span class="icon">📦</span>AI 投資庫存<span class="arrow" id="ai-holdings-body-arrow" style="margin-left:auto;">▾</span></h2>
+            <div class="collapsible-body" id="ai-holdings-body">
+                <div class="quick-actions"><button class="btn-secondary btn-sm" onclick="paperRefreshPositions()">🔄 刷新</button><span id="paper-cash-display" style="font-size:10px;color:var(--text-dim);margin-left:4px;"></span></div>
+                <div class="table-wrap"><table id="ai-positions-table"><thead><tr><th>代號</th><th>股數</th><th>成本</th><th>現價</th><th>損益</th><th></th></tr></thead><tbody><tr><td colspan="6" class="loading">載入中...</td></tr></tbody></table></div>
+            </div>
+        </div>
+
+        <!-- 券商庫存 -->
+        <div class="card">
+            <h2 class="collapsible-header" onclick="toggleSection('speedy-section')"><span class="icon">🏦</span>券商庫存<span class="arrow" id="speedy-section-arrow">▸</span></h2>
+            <div class="collapsible-body collapsed" id="speedy-section">
+                <div class="quick-actions"><button class="btn-secondary btn-sm" onclick="speedyLoadHoldings()">🔄 刷新</button><button class="btn-danger btn-sm" onclick="speedyDisconnect()">⏏️</button><span id="spd-status" style="font-size:10px;color:var(--text-dim);margin-left:4px;"></span></div>
+                <div class="table-wrap"><table id="speedy-holdings-table"><thead><tr><th>代號</th><th>名稱</th><th>股數</th><th>損益</th><th>%</th></tr></thead><tbody><tr><td colspan="5" class="loading">請登入後刷新</td></tr></tbody></table></div>
+            </div>
+        </div>
+
+        <!-- 海外 & 期貨 (折疊) -->
+        <div class="card">
+            <h2 class="collapsible-header" onclick="toggleSection('xtra-section')"><span class="icon">🌍</span>海外/期貨<span class="arrow" id="xtra-section-arrow">▸</span></h2>
+            <div class="collapsible-body collapsed" id="xtra-section">
+                <div class="tab-row" style="margin-top:4px;">
+                    <button class="tab-btn active" onclick="switchXtraTab('foreign')">🌍 海外</button>
+                    <button class="tab-btn" onclick="switchXtraTab('futures')">📊 期貨</button>
+                    <button class="tab-btn" onclick="switchXtraTab('ffutures')">🌐 海外期</button>
+                </div>
+                <div class="tab-content active" id="xtra-foreign">
+                    <div class="quick-actions"><button class="btn-secondary btn-sm" onclick="foreignLoadPositions()">📦庫存</button><button class="btn-secondary btn-sm" onclick="foreignLoadOrders()">📋委託</button><button class="btn-secondary btn-sm" onclick="foreignLoadMatches()">✅成交</button></div>
+                    <div class="form-row"><div class="form-group"><label>代號</label><input type="text" id="foreign-symbol" placeholder="AAPL" style="width:60px;"></div><div class="form-group"><label>買賣</label><select id="foreign-side"><option value="B">買</option><option value="S">賣</option></select></div><div class="form-group"><label>價格</label><input type="number" id="foreign-price" step="0.01" style="width:60px;"></div><div class="form-group"><label>量</label><input type="number" id="foreign-qty" style="width:50px;"></div><div class="form-group"><label>所</label><select id="foreign-exchange"><option value="US">美</option><option value="HK">港</option><option value="JP">日</option></select></div><button class="btn-primary btn-sm" onclick="foreignPlaceOrder()">📨</button></div>
+                    <div class="form-row" style="margin-top:3px;"><div class="form-group"><label>刪單序號</label><input type="text" id="foreign-cancel-id" style="width:80px;"></div><button class="btn-danger btn-sm" onclick="foreignCancelOrder()">🗑</button></div>
+                    <div id="foreign-status" style="font-size:10px;margin-top:3px;"></div>
+                    <div class="table-wrap"><table id="foreign-data-table"><tbody><tr><td colspan="6" style="color:var(--text-dim);">📭</td></tr></tbody></table></div>
+                </div>
+                <div class="tab-content" id="xtra-futures">
+                    <div class="quick-actions"><button class="btn-secondary btn-sm" onclick="futLoadOrders()">📋委託</button><button class="btn-secondary btn-sm" onclick="futLoadMatches()">✅成交</button><button class="btn-secondary btn-sm" onclick="futLoadUncover()">📦未平倉</button></div>
+                    <div id="fut-domestic-status" style="font-size:10px;"></div>
+                    <div class="table-wrap"><table id="fut-domestic-table"><tbody><tr><td colspan="5" style="color:var(--text-dim);">📭</td></tr></tbody></table></div>
+                </div>
+                <div class="tab-content" id="xtra-ffutures">
+                    <div class="form-row"><div class="form-group"><label>代號</label><input type="text" id="ffut-symbol" placeholder="ES" style="width:50px;"></div><div class="form-group"><label>買賣</label><select id="ffut-side"><option value="B">買</option><option value="S">賣</option></select></div><div class="form-group"><label>價格</label><input type="number" id="ffut-price" step="0.01" style="width:55px;"></div><div class="form-group"><label>量</label><input type="number" id="ffut-qty" style="width:45px;"></div><div class="form-group"><label>月份</label><input type="text" id="ffut-maturity" placeholder="202606" style="width:60px;"></div><div class="form-group"><label>所</label><input type="text" id="ffut-exchange" placeholder="CME" style="width:50px;"></div><button class="btn-primary btn-sm" onclick="ffutPlaceOrder()">📨</button></div>
+                    <div class="form-row" style="margin-top:3px;"><div class="form-group"><label>刪單</label><input type="text" id="ffut-cancel-id" style="width:80px;"><button class="btn-danger btn-sm" onclick="ffutCancelOrder()">🗑</button></div><div class="form-group"><label>改單序號</label><input type="text" id="ffut-replace-id" style="width:70px;"><input type="number" id="ffut-replace-price" step="0.01" style="width:50px;" placeholder="價"><input type="number" id="ffut-replace-qty" style="width:40px;" placeholder="量"><button class="btn-primary btn-sm purple" onclick="ffutReplaceOrder()">🔄</button></div></div>
+                    <div id="ffut-status" style="font-size:10px;margin-top:3px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ 中欄：圖表 / 流程 / 聊天 ═══════════════════════ -->
+    <div class="col-mid">
+        <!-- K線查詢 -->
+        <div class="card">
+            <h2 class="collapsible-header" onclick="toggleSection('kline-section')"><span class="icon">📈</span>K線圖表<span class="arrow" id="kline-section-arrow">▾</span></h2>
+            <div class="collapsible-body" id="kline-section">
+                <div class="form-row">
+                    <div class="form-group"><label>代號</label><input type="text" id="kline-symbol" placeholder="2330" style="width:70px;"></div>
+                    <div class="form-group"><label>週期</label><select id="kline-period"><option value="daily">日K</option><option value="weekly">周K</option><option value="monthly">月K</option></select></div>
+                    <button class="btn-primary btn-sm" onclick="klineLoad()">📈 查詢</button>
+                    <button class="btn-secondary btn-sm" onclick="klineLoadAdjusted()">🔧 還原</button>
+                </div>
+                <div id="kline-status" style="font-size:10px;margin-top:3px;"></div>
+                <pre style="max-height:180px;overflow-y:auto;margin-top:4px;font-size:10px;font-family:monospace;background:rgba(0,0,0,0.2);border-radius:6px;padding:8px;color:var(--text-dim);" id="kline-output">📭 請輸入股票代號查詢</pre>
+            </div>
+        </div>
+
+        <!-- Step 1: 任務指派 -->
+        <div class="flow-step" id="step1">
+            <h3>📋 Step 1 — 任務指派</h3>
+            <div class="form-row">
+                <div class="form-group"><label>💰 金額 (TWD)</label><input type="number" id="mission-budget" style="width:100px;" min="1000" step="1000" value="10000"></div>
+                <div class="form-group" style="flex:1;min-width:180px;"><label>📝 任務描述</label><textarea id="mission-text" placeholder="例如：一個月內讓資產翻倍..." style="width:100%;height:40px;resize:vertical;"></textarea></div>
+                <button class="btn-primary gold" id="btn-mission-create" onclick="missionCreate()" style="align-self:flex-end;">🤖 AI 解析</button>
+            </div>
+            <div id="mission-result" style="margin-top:4px;font-size:11px;"></div>
+            <div id="mission-confirmed" style="display:none;margin-top:4px;padding:6px 10px;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.2);border-radius:var(--radius-sm);font-size:11px;">
+                ✅ 任務已確認 — <span id="mission-confirmed-detail"></span>
+                <button class="btn-sm btn-secondary" onclick="missionReset()" style="margin-left:4px;">🔄 重設</button>
+            </div>
+        </div>
+        <div class="flow-arrow">▼</div>
+
+        <!-- Step 2: AI 策略討論 -->
+        <div class="flow-step" id="step2" style="opacity:0.5;pointer-events:none;">
+            <h3>🧠 Step 2 — AI 策略討論 <span style="font-size:9px;color:var(--yellow);">（🔒 Step 1）</span></h3>
+            <div class="chat-box" id="chat-box"><div class="chat-sys">🤖 完成 Step 1 後，在此與我討論投資策略</div></div>
+            <div style="display:flex;gap:4px;margin-top:4px;">
+                <input type="text" id="chat-input" placeholder="輸入想法..." style="flex:1;background:rgba(13,17,23,0.8);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:4px;font-size:11px;" onkeydown="if(event.key==='Enter')chatSend()">
+                <button class="btn-primary btn-sm" onclick="chatSend()">📨</button>
+            </div>
+            <div style="margin-top:4px;">
+                <button class="btn-primary purple btn-sm" id="btn-ai-search" onclick="agentResearchFromChat()" style="display:none;">🔍 AI 搜尋標的</button>
+                <span id="agent-research-status" style="font-size:10px;color:var(--text-dim);margin-left:4px;"></span>
+            </div>
+            <div id="candidates-area" style="margin-top:6px;"></div>
+            <div id="step2-confirm-area" style="display:none;margin-top:6px;text-align:center;">
+                <button class="btn-primary btn-lg purple" onclick="confirmStrategy()">✅ 確認策略，前往 Step 3</button>
+            </div>
+        </div>
+        <div class="flow-arrow">▼</div>
+
+        <!-- Step 3: 啟動 -->
+        <div class="flow-step" id="step3" style="text-align:center;opacity:0.5;pointer-events:none;">
+            <h3>🚀 Step 3 — 啟動自主投資 <span style="font-size:9px;color:var(--yellow);">（🔒 Step 2）</span></h3>
+            <div id="plan-summary" style="font-size:11px;margin-bottom:6px;color:var(--text-dim);">📋 完成策略討論後顯示</div>
+            <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+                <button class="btn-primary btn-lg purple" id="btn-start" onclick="aiStart()">🚀 開始 AI 自主投資</button>
+                <button class="btn-danger btn-lg" id="btn-stop" style="display:none;" onclick="aiStop()">⏹️ 停止</button>
+            </div>
+            <div id="exec-status" style="font-size:11px;margin-top:4px;"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ 右欄：下單面板 + AI 狀態 ═══════════════════════ -->
+    <div class="col-right">
+        <!-- 快速下單 -->
+        <div class="card accent-card">
+            <h2><span class="icon">📨</span>快速下單</h2>
+            <div class="form-row">
+                <div class="form-group"><label>代號</label><input type="text" id="stock-order-symbol" placeholder="2330" style="width:60px;"></div>
+                <div class="form-group"><label>買賣</label><select id="stock-order-side"><option value="BUY">買</option><option value="SELL">賣</option></select></div>
+                <div class="form-group"><label>價格</label><input type="number" id="stock-order-price" step="0.01" style="width:65px;"></div>
+                <div class="form-group"><label>量</label><input type="number" id="stock-order-qty" style="width:55px;"></div>
+            </div>
+            <div class="form-row" style="margin-top:4px;">
+                <div class="form-group"><label>市場</label><select id="stock-order-market"><option value="tse">上市</option><option value="otc">上櫃</option></select></div>
+                <div class="form-group"><label>委別</label><select id="stock-order-type"><option value="R">現股</option><option value="M">融資</option><option value="S">融券</option></select></div>
+                <button class="btn-primary btn-sm" onclick="stockPlaceOrder()">📨 下單</button>
+            </div>
+            <!-- 刪單 -->
+            <div style="margin-top:6px;padding-top:4px;border-top:1px solid var(--border);">
+                <div style="font-size:10px;color:var(--text-dim);margin-bottom:3px;">🗑 刪單</div>
+                <div class="form-row">
+                    <div class="form-group"><label>序號</label><input type="text" id="stock-cancel-id" style="width:90px;"></div>
+                    <div class="form-group"><label>代號</label><input type="text" id="stock-cancel-symbol" style="width:60px;"></div>
+                    <div class="form-group"><label>買賣</label><select id="stock-cancel-side"><option value="B">買</option><option value="S">賣</option></select></div>
+                    <button class="btn-danger btn-sm" onclick="stockCancelOrder()">🗑</button>
+                </div>
+            </div>
+            <!-- 改單 -->
+            <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border);">
+                <div style="font-size:10px;color:var(--text-dim);margin-bottom:3px;">🔄 改單</div>
+                <div class="form-row">
+                    <div class="form-group"><label>序號</label><input type="text" id="replace-order-id" style="width:70px;"></div>
+                    <div class="form-group"><label>代號</label><input type="text" id="replace-symbol" style="width:50px;"></div>
+                    <div class="form-group"><label>買賣</label><select id="replace-side"><option value="B">買</option><option value="S">賣</option></select></div>
+                    <div class="form-group"><label>新價</label><input type="number" id="replace-price" step="0.01" style="width:55px;"></div>
+                    <div class="form-group"><label>新量</label><input type="number" id="replace-qty" style="width:45px;"></div>
+                    <div class="form-group"><label>市</label><select id="replace-market"><option value="tse">上</option><option value="otc">櫃</option></select></div>
+                    <button class="btn-primary btn-sm purple" onclick="speedyReplace()">🔄</button>
+                </div>
+                <div id="replace-status" style="font-size:10px;margin-top:2px;"></div>
+            </div>
+            <!-- 委託/成交按鈕 -->
+            <div style="margin-top:6px;display:flex;gap:4px;">
+                <button class="btn-secondary btn-sm" onclick="stockLoadOrders()">📋 委託</button>
+                <button class="btn-secondary btn-sm" onclick="stockLoadMatches()">✅ 成交</button>
+            </div>
+            <div id="stock-trade-status" style="font-size:10px;margin-top:3px;"></div>
+            <div class="table-wrap" style="max-height:150px;"><table id="stock-trade-table"><tbody><tr><td colspan="6" style="color:var(--text-dim);font-size:10px;">📭 點擊載入</td></tr></tbody></table></div>
+        </div>
+
+        <!-- 保證金 & 密碼 -->
+        <div class="card">
+            <h2 class="collapsible-header" onclick="toggleSection('margin-pwd-section')"><span class="icon">🔑</span>保證金/密碼<span class="arrow" id="margin-pwd-section-arrow">▸</span></h2>
+            <div class="collapsible-body collapsed" id="margin-pwd-section">
+                <div class="form-row"><div class="form-group"><label>密碼</label><input type="password" id="margin-pwd" style="width:80px;"></div><button class="btn-primary btn-sm" onclick="marginQuery()">💰 查詢權益數</button></div>
+                <div id="margin-status" style="font-size:10px;margin-top:3px;"></div>
+                <div style="margin-top:6px;padding-top:4px;border-top:1px solid var(--border);">
+                    <div style="font-size:10px;color:var(--accent);margin-bottom:3px;">🔑 變更密碼</div>
+                    <div class="form-row"><div class="form-group"><label>舊</label><input type="password" id="chpwd-old" style="width:80px;"></div><div class="form-group"><label>新</label><input type="password" id="chpwd-new" style="width:80px;"></div><button class="btn-primary btn-sm purple" onclick="changePassword()">🔑</button></div>
+                    <div id="chpwd-status" style="font-size:10px;margin-top:3px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 📡 即時報價 (SSE) -->
+        <div class="card accent-card">
+            <h2><span class="icon">📡</span>即時報價 <span id="rt-status" style="font-size:9px;color:var(--yellow);">⏸</span></h2>
+            <div class="form-row" style="margin-bottom:4px;">
+                <div class="form-group"><label>代號</label><input type="text" id="rt-symbol" placeholder="2330,2454" style="width:120px;"></div>
+                <button class="btn-primary btn-sm" onclick="rtSubscribe()">📡 訂閱</button>
+                <button class="btn-secondary btn-sm" onclick="rtUnsubscribe()">🗑 取消</button>
+            </div>
+            <div id="rt-subs" style="font-size:9px;color:var(--text-dim);margin-bottom:4px;"></div>
+            <div id="rt-panel" style="max-height:220px;overflow-y:auto;font-size:10px;">
+                <div style="color:var(--text-dim);text-align:center;">📭 尚未訂閱</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ 底部：AI 決策日誌 ═══════════════════════ -->
+    <div class="bottom-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <h2 style="margin:0;"><span class="icon">🧠</span>AI 決策日誌</h2>
+            <div style="display:flex;gap:4px;align-items:center;">
+                <span id="debate-badge" class="badge badge-ok">0 筆</span>
+                <button class="btn-secondary btn-sm" onclick="debateRefresh()">🔄 刷新</button>
+            </div>
+        </div>
+        <div id="debate-mini" style="display:flex;gap:6px;overflow-x:auto;font-size:10px;padding-bottom:4px;">
+            <span style="color:var(--text-dim);">執行研究後顯示 AI 決策...</span>
+        </div>
+        <div id="debate-full-list" style="display:none;margin-top:6px;max-height:180px;overflow-y:auto;"></div>
+    </div>
+
+</div>
+
+<script>
+// ============================================================
+//  工具函式
+// ============================================================
+function $(id) { return document.getElementById(id); }
+function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+function escapeJsString(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,''); }
+function toggleSection(id) {
+    const body = $(id); if (!body) return;
+    const arrow = $(id+'-arrow');
+    body.classList.toggle('collapsed'); if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▸' : '▾';
+}
+function switchXtraTab(tab) {
+    ['foreign','futures','ffutures'].forEach(t => { const el = $('xtra-'+t); if (el) el.classList.remove('active'); });
+    const el = $('xtra-'+tab); if (el) el.classList.add('active');
+    const btns = document.querySelectorAll('#xtra-section .tab-btn');
+    btns.forEach((b,i) => { b.classList.toggle('active', (i===0&&tab==='foreign')||(i===1&&tab==='futures')||(i===2&&tab==='ffutures')); });
+}
+
+let tradeMode = 'paper';
+async function toggleMode() {
+    tradeMode = tradeMode === 'paper' ? 'live' : 'paper';
+    const tgl = $('tgl-mode'); const lbl = $('tgl-label');
+    if (tradeMode === 'live') { tgl.classList.add('on'); lbl.textContent = '💰 實盤'; }
+    else { tgl.classList.remove('on'); lbl.textContent = '📋 紙上'; }
+    $('exec-status').innerHTML = `<span style="color:var(--yellow);">⚠️ 已切換至 <b>${tradeMode==='live'?'實盤交易':'紙上交易'}</b> 模式</span>`;
+}
+
+// ============================================================
+//  頂部狀態 + 左欄資產
+// ============================================================
+async function refreshTopbar() {
+    try { const r = await fetch('/api/bank/balance'); const d = await r.json(); if (d.status==='success') { $('topbar-bank').textContent='$ '+(d.balance||0).toLocaleString(); $('metric-bank').textContent='$ '+(d.balance||0).toLocaleString(); } } catch(e) {}
+    try { const r = await fetch('/api/speedy/status'); const d = await r.json(); if (d.connected) $('topbar-broker-status').innerHTML='<span style="color:var(--green);">● 已連線</span>'; } catch(e) {}
+    try {
+        const r = await fetch('/api/paper/strategy/status'); const d = await r.json();
+        if (d.is_running) {
+            $('topbar-ai-status').className='badge badge-ok'; $('topbar-ai-status').textContent='▶️ AI 運行中';
+            $('topbar-ai-start-btn').style.display='none'; $('topbar-ai-stop-btn').style.display='';
+            $('btn-start').style.display='none'; $('btn-stop').style.display='';
+        } else {
+            $('topbar-ai-status').className='badge badge-warn'; $('topbar-ai-status').textContent='⏸️ AI 已停止';
+            $('topbar-ai-start-btn').style.display=''; $('topbar-ai-stop-btn').style.display='none';
+            $('btn-start').style.display=''; $('btn-stop').style.display='none';
+        }
+    } catch(e) {}
+    refreshAllHoldingsPnl();
+    $('topbar-last-tick').textContent = new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function bankEdit() {
+    const v = prompt('輸入銀行現金餘額 (TWD)：',''); if (!v) return;
+    const bal = parseFloat(v); if (isNaN(bal)||bal<0) { alert('請輸入有效金額'); return; }
+    fetch('/api/bank/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({balance:bal})}).then(r=>r.json()).then(d=>{if(d.status==='success')refreshTopbar();});
+}
+
+async function refreshAllHoldingsPnl() {
+    const el = $('topbar-pnl');
+    try {
+        const r = await fetch('/api/portfolio/holdings/all'); const d = await r.json();
+        if (d.status!=='success') { el.textContent='$ --'; return; }
+        const s = d.summary;
+        const pc = s.total_pnl>=0?'var(--green)':'var(--red)';
+        const sign = s.total_pnl>=0?'+':'';
+        el.innerHTML = `<span style="color:${pc};">${sign}$${Math.abs(s.total_pnl).toLocaleString()}</span><span style="font-size:9px;color:${pc};margin-left:2px;">(${sign}${s.total_pnl_pct.toFixed(2)}%)</span>`;
+        el.title = `總成本 $${s.total_cost.toLocaleString()} | 總市值 $${s.total_value.toLocaleString()} | 銀行 $${s.bank_balance.toLocaleString()} | 總資產 $${s.total_assets.toLocaleString()}`;
+        // 更新左欄指標
+        $('metric-value').textContent = '$'+(s.total_value||0).toLocaleString();
+        const pnlClr = (s.total_pnl||0)>=0?'var(--green)':'var(--red)';
+        $('metric-pnl').innerHTML = `<span style="color:${pnlClr};">${sign}$${Math.abs(s.total_pnl||0).toLocaleString()}</span>`;
+        $('metric-total').textContent = '$'+(s.total_assets||0).toLocaleString();
+    } catch(e) { el.textContent='$ --'; }
+}
+
+// ============================================================
+//  SpeedyAPI
+// ============================================================
+function toggleSpeedyLogin() { const dd=$('speedy-login-dropdown'); if(dd.style.display==='none'){dd.style.display='block';initSpeedyTop();}else dd.style.display='none'; }
+async function speedyConnectTop() {
+    const s=$('spd-status-top'); s.innerHTML='<span class="spinner"></span> 連線中...';
+    const body=JSON.stringify({user_id:$('spd-user-id-top').value.trim(),password:$('spd-password-top').value.trim(),account:$('spd-account-top').value.trim(),broker_id:$('spd-broker-id-top').value.trim(),pfx_password:$('spd-pfx-pwd-top').value.trim()});
+    try {
+        const r=await fetch('/api/speedy/connect',{method:'POST',headers:{'Content-Type':'application/json'},body}); const d=await r.json();
+        if(d.status==='success'){s.innerHTML='<span class="badge badge-ok">✅ '+d.message+'</span>';$('speedy-login-dropdown').style.display='none';refreshTopbar();speedyLoadHoldings();}
+        else s.innerHTML='<span class="badge badge-err">❌ '+d.message+'</span>';
+    } catch(e) { s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>'; }
+}
+async function initSpeedyTop() {
+    try { const r=await fetch('/api/speedy/config'); const d=await r.json(); if(d.status==='success'){if(d.user_id)$('spd-user-id-top').value=d.user_id;if(d.account)$('spd-account-top').value=d.account;if(d.broker_id)$('spd-broker-id-top').value=d.broker_id;} } catch(e) {}
+}
+async function speedyDisconnect() {
+    const s=$('spd-status'); try { const r=await fetch('/api/speedy/disconnect',{method:'POST'}); const d=await r.json(); s.innerHTML='⏏️ '+d.message; refreshTopbar(); } catch(e) { s.innerHTML='❌ '+e.message; }
+}
+async function speedyLoadHoldings() {
+    const tbody=document.querySelector('#speedy-holdings-table tbody'); tbody.innerHTML='<tr><td colspan="5"><span class="spinner"></span></td></tr>';
+    try {
+        const r=await fetch('/api/speedy/positions_formatted'); const d=await r.json();
+        if(d.status!=='success'){tbody.innerHTML='<tr><td colspan="5" style="color:var(--red);">❌ '+d.message+'</td></tr>';return;}
+        const h=d.holdings||[]; if(!h.length){tbody.innerHTML='<tr><td colspan="5" style="color:var(--text-dim);">📭 無庫存</td></tr>';return;}
+        tbody.innerHTML=h.map(x=>{const pc=(x.pnl||0)>=0?'pnl-up':'pnl-down';return `<tr><td style="font-weight:600;color:var(--accent);">${x.symbol}</td><td>${x.name||x.symbol}</td><td>${x.shares.toLocaleString()}</td><td class="${pc}">${(x.pnl>=0?'+':'')}$${x.pnl?.toLocaleString()}</td><td class="${pc}">${(x.pnl_pct>=0?'+':'')}${x.pnl_pct?.toFixed(2)}%</td></tr>`;}).join('');
+    } catch(e) { tbody.innerHTML='<tr><td colspan="5" style="color:var(--red);">❌ '+e.message+'</td></tr>'; }
+}
+
+// ============================================================
+//  任務管理
+// ============================================================
+let currentMissionId=null, currentMissionBudget=0, step2Confirmed=false;
+async function missionCreate() {
+    const text=$('mission-text').value.trim(), budget=parseInt($('mission-budget').value)||0, result=$('mission-result');
+    if(!text){result.innerHTML='<span style="color:var(--red);">❌ 請輸入任務描述</span>';return;}
+    if(budget<1000){result.innerHTML='<span style="color:var(--red);">❌ 請輸入有效的投資金額（至少 1,000 TWD）</span>';return;}
+    result.innerHTML='<span style="color:var(--yellow);"><span class="spinner"></span> AI 解析中...</span>'; $('btn-mission-create').disabled=true;
+    try {
+        const r=await fetch('/api/mission/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,budget})}); const d=await r.json();
+        if(d.status==='success'){
+            currentMissionId=d.mission_id; currentMissionBudget=budget; const pp=d.parsed_params||{};
+            $('mission-confirmed-detail').innerHTML=`目標報酬 <b>${pp.target_return_pct||'?'}%</b> | 期限 <b>${pp.timeframe_days||'?'}天</b> | 風險 <b>${pp.risk_level||'?'}</b> | 金額 <b>$${budget.toLocaleString()}</b>`;
+            $('mission-result').style.display='none'; $('mission-confirmed').style.display='block'; $('mission-text').disabled=true; $('mission-budget').disabled=true; $('btn-mission-create').style.display='none';
+            unlockStep2();
+        } else { result.innerHTML='<span style="color:var(--red);">❌ '+(d.message||'失敗')+'</span>'; $('btn-mission-create').disabled=false; }
+    } catch(e) { result.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; $('btn-mission-create').disabled=false; }
+}
+function missionReset() {
+    currentMissionId=null; currentMissionBudget=0; step2Confirmed=false;
+    $('mission-text').disabled=false; $('mission-budget').disabled=false; $('btn-mission-create').style.display=''; $('mission-result').style.display=''; $('mission-result').innerHTML=''; $('mission-confirmed').style.display='none'; $('mission-text').value=''; $('mission-budget').value='10000';
+    lockStep2(); lockStep3(); $('candidates-area').innerHTML=''; $('step2-confirm-area').style.display='none'; $('plan-summary').innerHTML='📋 完成策略討論後顯示'; $('chat-box').innerHTML='<div class="chat-sys">🤖 完成 Step 1 後，在此與我討論投資策略</div>';
+}
+function unlockStep2(){const s=$('step2');s.style.opacity='1';s.style.pointerEvents='auto';s.querySelector('h3 span').innerHTML='<span style="color:var(--green);">（✅ 已解鎖）</span>';$('btn-ai-search').style.display='';}
+function lockStep2(){const s=$('step2');s.style.opacity='0.5';s.style.pointerEvents='none';s.querySelector('h3 span').innerHTML='<span style="color:var(--yellow);">（🔒 Step 1）</span>';$('btn-ai-search').style.display='none';}
+function unlockStep3(){const s=$('step3');s.style.opacity='1';s.style.pointerEvents='auto';s.querySelector('h3 span').innerHTML='<span style="color:var(--green);">（✅ 已解鎖）</span>';}
+function lockStep3(){const s=$('step3');s.style.opacity='0.5';s.style.pointerEvents='none';s.querySelector('h3 span').innerHTML='<span style="color:var(--yellow);">（🔒 Step 2）</span>';}
+
+// ============================================================
+//  AI 研究 (Step 2)
+// ============================================================
+async function agentResearchFromChat() {
+    const status=$('agent-research-status'), candidates=$('candidates-area'), plan=$('plan-summary');
+    status.innerHTML='<span class="spinner"></span> AI 搜尋新聞 & 分析題材中...'; candidates.innerHTML='<span class="spinner"></span> AI 掃描全市場...'; $('btn-ai-search').disabled=true;
+    const chatUserMsgs=document.querySelectorAll('#chat-box .chat-you span'); let topic='';
+    if(chatUserMsgs.length>0){topic=chatUserMsgs[chatUserMsgs.length-1].textContent.trim(); if(topic.length>50) topic=topic.substring(0,50);}
+    try {
+        const body={budget:currentMissionBudget||10000,strategy:'combined'}; if(topic) body.topic=topic;
+        const r=await fetch('/api/paper/agent/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const d=await r.json();
+        if(d.status!=='success'){status.innerHTML='<span style="color:var(--red);">❌ '+(d.message||'失敗')+'</span>';$('btn-ai-search').disabled=false;return;}
+        const p1=d.phase1,p2=d.phase2,p4=d.phase4;
+        const themes=p1?.themes||[]; const themesText=themes.map(t=>typeof t==='string'?t:(t.name||t.theme||JSON.stringify(t))).join('、');
+        status.innerHTML='<span style="color:var(--green);">✅ 研究完成！<b>'+themes.length+'</b> 題材，<b>'+(p2?.screened_count||0)+'</b> 支候選</span>';
+        const screened=p2?.top_picks||[]; let candHtml='';
+        if(themes.length) candHtml+='<div style="margin-bottom:4px;font-size:10px;color:var(--text-dim);">📰 題材：<b style="color:var(--yellow);">'+escapeHtml(themesText)+'</b></div>';
+        if(screened.length){
+            candHtml+='<div class="table-wrap"><table><thead><tr><th>#</th><th>代號</th><th>名稱</th><th>股價</th><th>PE</th></tr></thead><tbody>';
+            screened.forEach((s,i)=>{candHtml+=`<tr><td>${i+1}</td><td style="font-weight:600;color:var(--accent);">${escapeHtml(s.symbol)}</td><td>${escapeHtml(s.name||s.symbol)}</td><td>${s.price?'$'+s.price.toFixed(2):'-'}</td><td>${s.pe||'-'}</td></tr>`;});
+            candHtml+='</tbody></table></div>';
+        } else candHtml+='<div style="font-size:10px;color:var(--yellow);">⚠️ 未篩出標的</div>';
+        if(p4?.status==='success'){
+            const picks=[];['short_term','mid_term','long_term'].forEach(h=>{(p4[h]?.picks||[]).forEach(p=>{if(p.symbol&&!picks.find(x=>x.symbol===p.symbol)) picks.push(p);});});
+            if(picks.length){
+                candHtml+='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
+                picks.forEach((p,i)=>{const clr=p.signal==='BUY'?'var(--green)':p.signal==='SELL'?'var(--red)':'var(--text-dim)';
+                    candHtml+=`<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:6px;min-width:100px;flex:1;"><div style="font-weight:700;color:var(--accent);font-size:10px;">#${i+1} ${escapeHtml(p.symbol)} <span style="color:${clr};">${p.signal||'HOLD'}</span></div><div style="font-size:9px;">💰 $${(p.price||0).toLocaleString()} | 信心 ${p.confidence||0}%</div><div style="font-size:9px;color:var(--text-dim);">${escapeHtml(p.reason||'')}</div></div>`;});
+                candHtml+='</div>';
+            }
+            const totalAlloc=picks.reduce((s,p)=>s+(p.allocation_pct||0),0);
+            plan.innerHTML=`<b>📊 計畫：</b> ${picks.length} 支標的，總配置 ${totalAlloc}%`;
+        }
+        candidates.innerHTML=candHtml||'<span style="color:var(--text-dim);">📭 無候選標的</span>'; $('step2-confirm-area').style.display='block'; debateRefresh();
+    } catch(e) { status.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; }
+    $('btn-ai-search').disabled=false;
+}
+function confirmStrategy(){step2Confirmed=true;$('step2-confirm-area').innerHTML='<span style="color:var(--green);font-weight:600;">✅ 策略已確認！</span>';unlockStep3();$('chat-box').innerHTML+=`<div class="chat-msg chat-sys">✅ 策略已確認！前往 Step 3 啟動。</div>`;$('chat-box').scrollTop=$('chat-box').scrollHeight;}
+
+// ============================================================
+//  AI 啟動/停止
+// ============================================================
+async function aiStart(){
+    if(!step2Confirmed){$('exec-status').innerHTML='<span style="color:var(--red);">❌ 請先在 Step 2 確認策略</span>';return;}
+    const s=$('exec-status'); s.innerHTML='<span class="spinner"></span> 啟動 AI 自主投資循環中...';
+    try {
+        await fetch('/api/paper/agent/execute',{method:'POST'}); await fetch('/api/paper/strategy/start',{method:'POST'});
+        const interval=30; const r=await fetch('/api/paper/autonomous/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interval_minutes:interval})}); const d=await r.json();
+        s.innerHTML='<span style="color:var(--green);font-weight:700;">🚀 AI 自主投資已啟動！</span><br><span style="font-size:9px;color:var(--text-dim);">循環：'+interval+' 分鐘 | 自動監控、買賣、蒐集情報</span>'; refreshTopbar();
+    } catch(e) { s.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; }
+}
+async function aiStop(){
+    const s=$('exec-status'); s.innerHTML='<span class="spinner"></span> 停止中...';
+    try { await fetch('/api/paper/strategy/stop',{method:'POST'}); await fetch('/api/paper/autonomous/stop',{method:'POST'}); s.innerHTML='<span style="color:var(--text-dim);">⏸️ AI 自主投資已停止</span>'; refreshTopbar(); }
+    catch(e) { s.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; }
+}
+
+// ── 頂部一鍵啟動/停止（無需三步驟）──
+async function aiStartDirect(){
+    const badge=$('topbar-ai-status'), startBtn=$('topbar-ai-start-btn'), stopBtn=$('topbar-ai-stop-btn');
+    startBtn.disabled=true; startBtn.textContent='⏳';
+    badge.className='badge badge-warn'; badge.textContent='⏳ AI 啟動中...';
+    try {
+        // Step 1: 自動研究
+        const r1=await fetch('/api/paper/agent/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({budget:1000000,strategy:'combined'})});
+        const d1=await r1.json();
+        if(d1.status!=='success'){throw new Error(d1.message||'研究失敗');}
+        // Step 2: 載入標的
+        const r2=await fetch('/api/paper/agent/execute',{method:'POST'});
+        const d2=await r2.json();
+        // Step 3: 啟動自主策略
+        await fetch('/api/paper/strategy/start',{method:'POST'});
+        // Step 4: 啟動 24/7 循環
+        const r4=await fetch('/api/paper/autonomous/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interval_minutes:30})});
+        const d4=await r4.json();
+        badge.className='badge badge-ok'; badge.textContent='▶️ AI 運行中';
+        startBtn.style.display='none'; stopBtn.style.display='';
+        $('exec-status').innerHTML='<span style="color:var(--green);font-weight:700;">🚀 AI 自主投資已啟動！</span><br><span style="font-size:9px;color:var(--text-dim);">循環：30 分鐘 | 自動監控、研究、買賣</span>';
+        refreshTopbar();
+    } catch(e) {
+        badge.className='badge badge-err'; badge.textContent='❌ 啟動失敗';
+        startBtn.disabled=false; startBtn.textContent='▶️ 啟動';
+        $('exec-status').innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>';
+    }
+}
+async function aiStopDirect(){
+    const badge=$('topbar-ai-status'), startBtn=$('topbar-ai-start-btn'), stopBtn=$('topbar-ai-stop-btn');
+    stopBtn.disabled=true; stopBtn.textContent='⏳';
+    try {
+        await fetch('/api/paper/strategy/stop',{method:'POST'});
+        await fetch('/api/paper/autonomous/stop',{method:'POST'});
+        badge.className='badge badge-warn'; badge.textContent='⏸️ AI 已停止';
+        startBtn.style.display=''; stopBtn.style.display='none'; stopBtn.disabled=false; stopBtn.textContent='⏹️ 停止';
+        startBtn.disabled=false; startBtn.textContent='▶️ 啟動';
+        $('exec-status').innerHTML='<span style="color:var(--text-dim);">⏸️ AI 自主投資已停止</span>';
+        refreshTopbar();
+    } catch(e) {
+        stopBtn.disabled=false; stopBtn.textContent='⏹️ 停止';
+        $('exec-status').innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>';
+    }
+}
+
+// ============================================================
+//  策略討論
+// ============================================================
+function chatQuickAdd(sym){$('chat-input').value='分析 '+sym;chatSend();}
+async function chatSend(){
+    const input=$('chat-input'), msg=input.value.trim(); if(!msg) return;
+    const box=$('chat-box'); box.innerHTML+=`<div class="chat-msg chat-you"><span>${escapeHtml(msg)}</span></div>`; input.value=''; box.scrollTop=box.scrollHeight;
+    const tid='t'+Date.now(); box.innerHTML+=`<div id="${tid}" class="chat-msg chat-sys"><span class="spinner"></span> AI 思考中...</div>`; box.scrollTop=box.scrollHeight;
+    try {
+        const r=await fetch('/api/paper/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})}); const d=await r.json();
+        const el=document.getElementById(tid); if(el) el.remove();
+        if(d.status==='success') box.innerHTML+=`<div class="chat-msg chat-ai"><span>${escapeHtml(d.response).replace(/\n/g,'<br>')}</span></div>`;
+        else box.innerHTML+=`<div class="chat-msg chat-sys">❌ ${escapeHtml(d.message||'失敗')}</div>`;
+    } catch(e) { const el=document.getElementById(tid); if(el) el.remove(); box.innerHTML+=`<div class="chat-msg chat-sys">❌ ${e.message}</div>`; }
+    box.scrollTop=box.scrollHeight;
+}
+
+// ============================================================
+//  AI 紙上交易
+// ============================================================
+async function paperRefreshPositions(){
+    const tbody=document.querySelector('#ai-positions-table tbody'); tbody.innerHTML='<tr><td colspan="6"><span class="spinner"></span></td></tr>';
+    try {
+        const r=await fetch('/api/paper/positions'); const d=await r.json();
+        if(d.status!=='success'||!d.positions.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--text-dim);">📭 AI 無持倉</td></tr>';return;}
+        tbody.innerHTML=d.positions.map(p=>{const pc=(p.pnl||0)>=0?'pnl-up':'pnl-down';return `<tr><td style="font-weight:600;color:var(--accent);">${p.symbol}</td><td>${p.shares.toLocaleString()}</td><td>$${p.avg_cost.toFixed(2)}</td><td>${p.price?'$'+p.price.toFixed(2):'N/A'}</td><td class="${pc}">${(p.pnl>=0?'+':'')}$${p.pnl.toLocaleString()}</td><td><button class="btn-danger btn-xs" onclick="paperQuickSell('${escapeJsString(p.symbol)}',${p.shares})">賣</button></td></tr>`;}).join('');
+        const r2=await fetch('/api/paper/account'); const d2=await r2.json(); if(d2.status==='success') $('paper-cash-display').textContent='可用：$ '+(d2.balance||0).toLocaleString();
+    } catch(e) { tbody.innerHTML='<tr><td colspan="6" style="color:var(--red);">❌ '+e.message+'</td></tr>'; }
+}
+async function paperQuickSell(sym,shares){const p=prompt(`賣出 ${sym}（持有 ${shares} 股）\n輸入賣出價格：`);if(!p)return;const price=parseFloat(p);if(isNaN(price)||price<=0)return;try{const r=await fetch('/api/paper/trade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,side:'SELL',shares,price})});const d=await r.json();if(d.status==='success')paperRefreshPositions();else alert(d.message);}catch(e){alert(e.message);}}
+
+// ============================================================
+//  辯論記錄
+// ============================================================
+async function debateRefresh(){debateFullRefresh();debateMiniRefresh();}
+async function debateMiniRefresh(){
+    const el=$('debate-mini'), badge=$('debate-badge');
+    try {
+        const r=await fetch('/api/agent/debate/history?limit=8'); const d=await r.json();
+        if(d.status!=='success'){el.innerHTML='<span style="color:var(--red);">❌</span>';return;}
+        const h=d.history||[]; badge.textContent=h.length+' 筆';
+        if(!h.length){el.innerHTML='<span style="color:var(--text-dim);">執行研究後顯示...</span>';return;}
+        el.innerHTML=h.reverse().map(rec=>{const clr=rec.decision==='BULLISH'?'var(--green)':rec.decision==='BEARISH'?'var(--red)':'var(--yellow)';return `<div style="padding:3px 8px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;cursor:pointer;min-width:140px;text-align:center;" onclick="debateLoadDetail(${rec.debate_id})"><span style="color:${clr};font-weight:600;">${rec.decision==='BULLISH'?'📈':rec.decision==='BEARISH'?'📉':'➡️'} ${rec.decision}</span><br><span style="font-size:9px;color:var(--text-dim);">${escapeHtml((rec.themes||[]).join(',')||'')}</span></div>`;}).join('');
+    } catch(e) {}
+}
+async function debateFullRefresh(){
+    const el=$('debate-full-list'); el.innerHTML='<span class="spinner"></span>'; el.style.display='block';
+    try {
+        const r=await fetch('/api/agent/debate/history?limit=20'); const d=await r.json();
+        if(d.status!=='success'){el.innerHTML='<span style="color:var(--red);">❌</span>';return;}
+        const h=d.history||[]; if(!h.length){el.innerHTML='<span style="color:var(--text-dim);">📭 尚無記錄</span>';return;}
+        el.innerHTML=h.reverse().map((rec,i)=>{const clr=rec.decision==='BULLISH'?'var(--green)':rec.decision==='BEARISH'?'var(--red)':'var(--yellow)';const emoji=rec.decision==='BULLISH'?'📈':rec.decision==='BEARISH'?'📉':'➡️';const ts=rec.timestamp?new Date(rec.timestamp).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="debate-entry"><div class="debate-header" onclick="debateLoadDetail(${rec.debate_id},this)"><span style="font-weight:700;color:${clr};">${emoji} ${escapeHtml(rec.decision||'NEUTRAL')}</span><span style="font-size:10px;color:var(--text-dim);">信心 ${rec.confidence?Math.round(rec.confidence*100):0}%</span><span style="font-size:9px;color:var(--text-dim);">${escapeHtml((rec.themes||[]).join(',')||'')}</span><span style="font-size:9px;color:var(--text-dim);">${ts}</span><span style="margin-left:auto;">▸</span></div><div class="debate-detail" id="debate-detail-${rec.debate_id}"><div class="loading"><span class="spinner"></span></div></div></div>`;}).join('');
+    } catch(e) { el.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; }
+}
+async function debateLoadDetail(debateId,headerEl){
+    const detailDiv=$('debate-detail-'+debateId); if(!detailDiv) return;
+    if(detailDiv.style.display==='block'){detailDiv.style.display='none';return;}
+    detailDiv.style.display='block';
+    if(detailDiv.querySelector('.loading')){
+        try {
+            const r=await fetch('/api/agent/debate/'+debateId); const d=await r.json();
+            if(d.status!=='success'){detailDiv.innerHTML='<span style="color:var(--red);">❌ '+d.message+'</span>';return;}
+            const db=d.debate; const labels={bull_argument:'📈 多方',bear_argument:'📉 空方',analyst_argument:'🔬 技術',trader_decision:'⚖️ 裁決'};
+            let html='';
+            ['bull_argument','bear_argument','analyst_argument'].forEach(key=>{const c=db[key]||'';if(!c)return;html+=`<div style="margin:4px 0;padding:6px;background:rgba(255,255,255,0.02);border-radius:6px;border-left:2px solid var(--border-glow);"><div style="font-weight:600;color:var(--accent);margin-bottom:2px;font-size:10px;">${labels[key]}</div><pre style="white-space:pre-wrap;font-family:inherit;font-size:10px;color:#c9d1d9;line-height:1.4;margin:0;">${escapeHtml(c)}</pre></div>`;});
+            const td=db.trader_decision||{}; if(Object.keys(td).length){const dc=td.decision==='BULLISH'?'var(--green)':td.decision==='BEARISH'?'var(--red)':'var(--yellow)';html+=`<div style="margin:4px 0;padding:6px;background:rgba(210,153,34,0.06);border-radius:6px;border-left:2px solid #d29922;"><div style="font-weight:600;color:var(--yellow);margin-bottom:2px;font-size:10px;">⚖️ 最終裁決</div><div style="font-size:10px;">📊 決策：<b style="color:${dc}">${td.decision||'N/A'}</b> | 🎯 信心：<b>${td.confidence?Math.round(td.confidence*100)+'%':'N/A'}</b></div>${td.reasoning?`<pre style="white-space:pre-wrap;font-family:inherit;font-size:10px;color:#c9d1d9;line-height:1.4;margin:2px 0 0 0;">${escapeHtml(td.reasoning)}</pre>`:''}</div>`;}
+            detailDiv.innerHTML=html;
+        } catch(e) { detailDiv.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; }
+    }
+}
+
+// ============================================================
+//  證券交易操作
+// ============================================================
+async function stockPlaceOrder(){const s=$('stock-trade-status');const symbol=$('stock-order-symbol').value.trim().toUpperCase(),side=$('stock-order-side').value,price=parseFloat($('stock-order-price').value)||0,quantity=parseInt($('stock-order-qty').value)||0,market=$('stock-order-market').value;if(!symbol||price<=0||quantity<=0){s.innerHTML='<span style="color:var(--red);">❌ 請填寫完整</span>';return;}s.innerHTML='<span class="spinner"></span> 下單中...';try{const r=await fetch('/api/speedy/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,side,price,quantity,market})});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+(d.message||'失敗')+'</span>';if(d.status==='success')stockLoadOrders();}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function stockCancelOrder(){const s=$('stock-trade-status');const order_id=$('stock-cancel-id').value.trim(),symbol=$('stock-cancel-symbol').value.trim().toUpperCase(),side=$('stock-cancel-side').value;if(!order_id){s.innerHTML='<span style="color:var(--red);">❌ 請輸入委託序號</span>';return;}s.innerHTML='<span class="spinner"></span> 刪單中...';try{const r=await fetch('/api/speedy/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id,symbol,side})});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+(d.message||'失敗')+'</span>';if(d.status==='success')stockLoadOrders();}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function stockLoadOrders(){stockLoadTradeData('/api/speedy/orders','委託');}
+async function stockLoadMatches(){stockLoadTradeData('/api/speedy/matches','成交');}
+async function stockLoadTradeData(url,label){const tbody=document.querySelector('#stock-trade-table tbody'),s=$('stock-trade-status');tbody.innerHTML='<tr><td colspan="6"><span class="spinner"></span></td></tr>';try{const r=await fetch(url);const d=await r.json();if(d.status!=='success'){tbody.innerHTML='<tr><td colspan="6" style="color:var(--red);">❌ '+(d.message||'失敗')+'</td></tr>';s.innerHTML='';return;}const data=d.parsed||d.orders||d.matches||[];if(!data.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--text-dim);">📭 無'+label+'</td></tr>';s.innerHTML='';return;}const keys=Object.keys(data[0]).slice(0,6);tbody.innerHTML='<thead><tr>'+keys.map(k=>'<th>'+escapeHtml(k)+'</th>').join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+keys.map(k=>'<td>'+escapeHtml(String(r[k]||''))+'</td>').join('')+'</tr>').join('')+'</tbody>';s.innerHTML='<span style="color:var(--green);">✅ '+label+'共 '+data.length+' 筆</span>';}catch(e){tbody.innerHTML='<tr><td colspan="6" style="color:var(--red);">❌ '+e.message+'</td></tr>';}}
+
+// ============================================================
+//  改單
+// ============================================================
+async function speedyReplace(){const s=$('replace-status');const body=JSON.stringify({order_id:$('replace-order-id').value.trim(),symbol:$('replace-symbol').value.trim().toUpperCase(),side:$('replace-side').value,new_price:parseFloat($('replace-price').value)||0,new_quantity:parseInt($('replace-qty').value)||0,market:$('replace-market').value});s.innerHTML='<span class="spinner"></span> 改單中...';try{const r=await fetch('/api/speedy/replace',{method:'POST',headers:{'Content-Type':'application/json'},body});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+
+// ============================================================
+//  海外股票
+// ============================================================
+async function foreignPlaceOrder(){const s=$('foreign-status');const body=JSON.stringify({symbol:$('foreign-symbol').value.trim().toUpperCase(),side:$('foreign-side').value,price:parseFloat($('foreign-price').value)||0,quantity:parseInt($('foreign-qty').value)||0,exchange:$('foreign-exchange').value});s.innerHTML='<span class="spinner"></span> 海外下單中...';try{const r=await fetch('/api/speedy/foreign/order',{method:'POST',headers:{'Content-Type':'application/json'},body});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function foreignCancelOrder(){const s=$('foreign-status');const oid=$('foreign-cancel-id').value.trim();if(!oid){s.innerHTML='<span style="color:var(--red);">❌ 請輸入序號</span>';return;}s.innerHTML='<span class="spinner"></span> 刪單中...';try{const r=await fetch('/api/speedy/foreign/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:oid,symbol:$('foreign-symbol').value.trim().toUpperCase(),side:$('foreign-side').value,exchange:$('foreign-exchange').value})});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function foreignLoadPositions(){foreignLoadData('/api/speedy/foreign/positions');}
+async function foreignLoadOrders(){foreignLoadData('/api/speedy/foreign/orders');}
+async function foreignLoadMatches(){foreignLoadData('/api/speedy/foreign/matches');}
+async function foreignLoadData(url){const tbody=document.querySelector('#foreign-data-table tbody');tbody.innerHTML='<tr><td colspan="6"><span class="spinner"></span></td></tr>';try{const r=await fetch(url);const d=await r.json();if(d.status!=='success'){tbody.innerHTML='<tr><td colspan="6" style="color:var(--red);">❌ '+d.message+'</td></tr>';return;}const data=d.positions||d.orders||d.matches||d.parsed||[];if(!data.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--text-dim);">📭 無資料</td></tr>';return;}const keys=Object.keys(data[0]).slice(0,6);tbody.innerHTML='<thead><tr>'+keys.map(k=>'<th>'+escapeHtml(k)+'</th>').join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+keys.map(k=>'<td>'+escapeHtml(String(r[k]||''))+'</td>').join('')+'</tr>').join('')+'</tbody>';}catch(e){tbody.innerHTML='<tr><td colspan="6" style="color:var(--red);">❌ '+e.message+'</td></tr>';}}
+
+// ============================================================
+//  國內期貨
+// ============================================================
+async function futLoadOrders(){futLoadData('/api/speedy/fut/orders','fut-domestic-table','fut-domestic-status');}
+async function futLoadMatches(){futLoadData('/api/speedy/fut/matches','fut-domestic-table','fut-domestic-status');}
+async function futLoadUncover(){const pwd=prompt('請輸入期貨密碼：');if(!pwd)return;futLoadData('/api/speedy/fut/uncover?password='+encodeURIComponent(pwd),'fut-domestic-table','fut-domestic-status');}
+async function futLoadData(url,tableId,statusId){const tbody=document.querySelector('#'+tableId+' tbody'),s=$(statusId);tbody.innerHTML='<tr><td colspan="5"><span class="spinner"></span></td></tr>';try{const r=await fetch(url);const d=await r.json();if(d.status!=='success'){tbody.innerHTML='<tr><td colspan="5" style="color:var(--red);">❌ '+d.message+'</td></tr>';s.innerHTML='';return;}const data=d.parsed||d.orders||d.matches||[];if(!data.length){tbody.innerHTML='<tr><td colspan="5" style="color:var(--text-dim);">📭 無資料</td></tr>';s.innerHTML='';return;}const keys=Object.keys(data[0]).slice(0,5);tbody.innerHTML='<thead><tr>'+keys.map(k=>'<th>'+escapeHtml(k)+'</th>').join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+keys.map(k=>'<td>'+escapeHtml(String(r[k]||''))+'</td>').join('')+'</tr>').join('')+'</tbody>';s.innerHTML='<span style="color:var(--green);">✅ 共 '+data.length+' 筆</span>';}catch(e){tbody.innerHTML='<tr><td colspan="5" style="color:var(--red);">❌ '+e.message+'</td></tr>';}}
+
+// ============================================================
+//  海外期貨
+// ============================================================
+async function ffutPlaceOrder(){const s=$('ffut-status');const body=JSON.stringify({symbol:$('ffut-symbol').value.trim().toUpperCase(),side:$('ffut-side').value,price:parseFloat($('ffut-price').value)||0,quantity:parseInt($('ffut-qty').value)||0,maturity:$('ffut-maturity').value.trim(),exchange:$('ffut-exchange').value.trim().toUpperCase()});s.innerHTML='<span class="spinner"></span> 海外期貨下單中...';try{const r=await fetch('/api/speedy/foreign_fut/order',{method:'POST',headers:{'Content-Type':'application/json'},body});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function ffutCancelOrder(){const s=$('ffut-status');const oid=$('ffut-cancel-id').value.trim();if(!oid){s.innerHTML='<span style="color:var(--red);">❌ 請輸入序號</span>';return;}s.innerHTML='<span class="spinner"></span> 刪單中...';try{const r=await fetch('/api/speedy/foreign_fut/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:oid,exchange:$('ffut-exchange').value.trim().toUpperCase()})});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function ffutReplaceOrder(){const s=$('ffut-status');const body=JSON.stringify({order_id:$('ffut-replace-id').value.trim(),symbol:$('ffut-symbol').value.trim().toUpperCase(),side:$('ffut-side').value,maturity:$('ffut-maturity').value.trim(),exchange:$('ffut-exchange').value.trim().toUpperCase(),new_price:parseFloat($('ffut-replace-price').value)||0,new_quantity:parseInt($('ffut-replace-qty').value)||0});s.innerHTML='<span class="spinner"></span> 改單中...';try{const r=await fetch('/api/speedy/foreign_fut/replace',{method:'POST',headers:{'Content-Type':'application/json'},body});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+
+// ============================================================
+//  K線
+// ============================================================
+async function klineLoad(){klineFetch('/api/speedy/kline/');}
+async function klineLoadAdjusted(){klineFetch('/api/speedy/kline_adjusted/');}
+async function klineFetch(baseUrl){const sym=$('kline-symbol').value.trim().toUpperCase(),period=$('kline-period').value,out=$('kline-output'),s=$('kline-status');if(!sym){out.textContent='❌ 請輸入股票代號';return;}s.innerHTML='<span class="spinner"></span> 查詢中...';out.textContent='載入中...';try{const r=await fetch(baseUrl+sym+'?period='+period);const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';if(d.status==='success'&&d.data)out.textContent=JSON.stringify(d.data.slice(0,30),null,2);else out.textContent=d.message||'無資料';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';out.textContent=e.message;}}
+
+// ============================================================
+//  保證金 & 密碼
+// ============================================================
+async function marginQuery(){const s=$('margin-status'),pwd=$('margin-pwd').value.trim();s.innerHTML='<span class="spinner"></span> 查詢中...';try{const r=await fetch('/api/speedy/margin?qry_type=0&password='+encodeURIComponent(pwd));const d=await r.json();s.innerHTML=d.status==='success'?'<pre style="font-size:10px;margin:2px 0;color:var(--text);">'+JSON.stringify(d,null,2)+'</pre>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+async function changePassword(){const s=$('chpwd-status'),oldPwd=$('chpwd-old').value.trim(),newPwd=$('chpwd-new').value.trim();if(!oldPwd||!newPwd){s.innerHTML='<span style="color:var(--red);">❌ 請填寫新舊密碼</span>';return;}s.innerHTML='<span class="spinner"></span> 變更中...';try{const r=await fetch('/api/speedy/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:oldPwd,new_password:newPwd})});const d=await r.json();s.innerHTML=d.status==='success'?'<span class="badge badge-ok">✅ '+d.message+'</span>':'<span class="badge badge-err">❌ '+d.message+'</span>';}catch(e){s.innerHTML='<span class="badge badge-err">❌ '+e.message+'</span>';}}
+
+// ============================================================
+//  📡 即時報價 SSE
+// ============================================================
+let rtSource = null, rtSymbols = {};
+function initRealtimeStream() {
+    if (rtSource) { rtSource.close(); rtSource = null; }
+    const status = $('rt-status');
+    status.innerHTML = '<span style="color:var(--yellow);">⏳ 連線中...</span>';
+    rtSource = new EventSource('/api/speedy/quotes/subscribe/stream');
+    rtSource.onopen = () => { status.innerHTML = '<span style="color:var(--green);">● LIVE</span>'; };
+    rtSource.onerror = () => { status.innerHTML = '<span style="color:var(--red);">● 斷線</span>'; setTimeout(initRealtimeStream, 5000); };
+    rtSource.onmessage = (e) => {
+        try {
+            const d = JSON.parse(e.data);
+            if (d.type === 'connected') {
+                rtSymbols = {};
+                (d.subscribed || []).forEach(s => { rtSymbols[s] = { ob: null, tr: null }; });
+                updateSubsList();
+            } else if (d.type === 'orderbook') {
+                rtSymbols[d.symbol] = rtSymbols[d.symbol] || { ob: null, tr: null };
+                rtSymbols[d.symbol].ob = d;
+                renderRealtime();
+            } else if (d.type === 'trade') {
+                rtSymbols[d.symbol] = rtSymbols[d.symbol] || { ob: null, tr: null };
+                rtSymbols[d.symbol].tr = d;
+                renderRealtime();
+            }
+        } catch (ex) {}
+    };
+}
+function updateSubsList() {
+    const syms = Object.keys(rtSymbols).sort();
+    const el = $('rt-subs');
+    if (!syms.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '📋 已訂閱：' + syms.map(s => `<span style="cursor:pointer;color:var(--accent);margin:0 2px;" onclick="$('rt-symbol').value='${s}';rtUnsubscribe();">${s}</span>`).join(' ');
+}
+function renderRealtime() {
+    const panel = $('rt-panel');
+    const syms = Object.keys(rtSymbols).sort();
+    if (!syms.length) { panel.innerHTML = '<div style="color:var(--text-dim);text-align:center;">📭 尚未訂閱</div>'; return; }
+    let html = '';
+    syms.forEach(sym => {
+        const d = rtSymbols[sym] || {};
+        const ob = d.ob, tr = d.tr;
+        html += `<div style="margin-bottom:6px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:6px;">`;
+        html += `<div style="font-weight:700;color:var(--accent);font-size:11px;">${sym}</div>`;
+        if (ob) {
+            const bid = ob.bid1_price, ask = ob.ask1_price;
+            html += `<div style="display:flex;gap:4px;margin:2px 0;font-size:9px;">`;
+            html += `<span style="color:var(--red);">賣 ${ob.ask1_price||'-'}(${ob.ask1_qty||0})</span>`;
+            html += `<span style="color:var(--text-dim);">│</span>`;
+            html += `<span style="color:var(--green);">${ob.bid1_price||'-'}(${ob.bid1_qty||0}) 買</span>`;
+            html += `</div>`;
+        }
+        if (tr) {
+            const clr = (tr.price || 0) >= 0 ? 'var(--green)' : 'var(--text)';
+            html += `<div style="font-size:9px;color:${clr};">💰 ${tr.price} x ${tr.qty} @ ${tr.time||''}</div>`;
+        }
+        if (!ob && !tr) html += `<div style="font-size:9px;color:var(--text-dim);">等待資料...</div>`;
+        html += `</div>`;
+    });
+    panel.innerHTML = html;
+}
+async function rtSubscribe() {
+    const raw = $('rt-symbol').value.trim();
+    if (!raw) return;
+    const syms = raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    try {
+        const r = await fetch('/api/speedy/quotes/subscribe/add', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols: syms })
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            syms.forEach(s => { rtSymbols[s] = rtSymbols[s] || { ob: null, tr: null }; });
+            updateSubsList(); renderRealtime();
+            $('rt-symbol').value = '';
+        } else alert(d.message || '訂閱失敗');
+    } catch (e) { alert(e.message); }
+}
+async function rtUnsubscribe() {
+    const raw = $('rt-symbol').value.trim();
+    const syms = raw ? raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : Object.keys(rtSymbols);
+    if (!syms.length) return;
+    try {
+        const r = await fetch('/api/speedy/quotes/subscribe/remove', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols: syms })
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            syms.forEach(s => delete rtSymbols[s]);
+            updateSubsList(); renderRealtime();
+            $('rt-symbol').value = '';
+        } else alert(d.message || '取消失敗');
+    } catch (e) { alert(e.message); }
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+document.addEventListener('DOMContentLoaded',()=>{refreshTopbar();paperRefreshPositions();initSpeedyTop();debateMiniRefresh();initRealtimeStream();setInterval(refreshTopbar,30000);});
+</script>
+</body>
+</html>

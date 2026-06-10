@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice 核心控制面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white font-sans antialiased">
+    <div class="flex h-screen overflow-hidden">
+        
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
+            <div class="h-16 flex items-center px-6 border-b border-gray-700">
+                <i class="fa-solid fa-robot text-blue-400 text-xl mr-3"></i>
+                <span class="font-bold text-lg tracking-wide">Alice Hub</span>
+            </div>
+            
+            <nav class="flex-1 py-4 overflow-y-auto space-y-1">
+                <a href="#" class="flex items-center px-6 py-3 bg-blue-600/20 text-blue-400 border-r-4 border-blue-500">
+                    <i class="fa-solid fa-store w-5"></i>
+                    <span class="ml-3 font-medium">技能商店 (App Store)</span>
+                </a>
+                <a href="#" class="flex items-center px-6 py-3 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors">
+                    <i class="fa-solid fa-terminal w-5"></i>
+                    <span class="ml-3 font-medium">終端日誌 (Terminal)</span>
+                </a>
+                <a href="#" class="flex items-center px-6 py-3 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors">
+                    <i class="fa-solid fa-brain w-5"></i>
+                    <span class="ml-3 font-medium">記憶管理 (Memory)</span>
+                </a>
+            </nav>
+
+            <div class="p-4 border-t border-gray-700 text-xs text-gray-500">
+                v2.5 Architecture<br>
+                Core Status: <span class="text-green-400">Online</span>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col relative overflow-hidden bg-gray-900">
+            <!-- Header -->
+            <header class="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-gray-900">
+                <h1 class="text-xl font-bold">Skill Store</h1>
+                <div class="relative">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"></i>
+                    <input type="text" placeholder="搜尋核心模組..." class="bg-gray-800 border border-gray-700 rounded-full py-1.5 pl-9 pr-4 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-64 transition-all">
+                </div>
+            </header>
+
+            <!-- Skill Grid -->
+            <div class="flex-1 overflow-auto p-8">
+                <div class="mb-6">
+                    <p class="text-gray-400">管理、熱更新與安裝 Alice 的擴充模組，賦予她更多能力。</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="skills-container">
+                    <!-- Skills will be injected here via JS -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Fetch and render skills
+        async function loadSkills() {
+            try {
+                const response = await fetch('/api/skills');
+                const skills = await response.json();
+                
+                const container = document.getElementById('skills-container');
+                container.innerHTML = '';
+                
+                skills.forEach(skill => {
+                    const isInstalled = skill.status === 'installed';
+                    const iconBg = isInstalled ? 'bg-blue-900/30 text-blue-400' : 'bg-gray-800 text-gray-400';
+                    const badge = isInstalled 
+                        ? `<span class="bg-green-900/30 text-green-400 text-xs px-2 py-1 rounded-full"><i class="fa-solid fa-check mr-1"></i>Installed</span>`
+                        : `<span class="bg-gray-800 text-gray-400 text-xs px-2 py-1 rounded-full">Available</span>`;
+                    
+                    const button = isInstalled
+                        ? `<button disabled class="w-full py-2 mt-4 rounded border border-gray-700 text-gray-500 bg-gray-800/50 cursor-not-allowed text-sm">Configured in Engine</button>`
+                        : `<button class="w-full py-2 mt-4 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm transition-colors" onclick="installSkill('${skill.id}')"><i class="fa-solid fa-download mr-2"></i>Install Module</button>`;
+
+                    const card = `
+                        <div class="bg-gray-800/50 border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition-colors flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="p-3 rounded-lg ${iconBg}">
+                                        <i class="${skill.icon} text-xl"></i>
+                                    </div>
+                                    ${badge}
+                                </div>
+                                <h3 class="text-lg font-bold mb-2">${skill.name}</h3>
+                                <p class="text-sm text-gray-400 leading-relaxed">${skill.description}</p>
+                            </div>
+                            ${button}
+                        </div>
+                    `;
+                    container.innerHTML += card;
+                });
+            } catch (err) {
+                console.error("Failed to load skills", err);
+            }
+        }
+
+        async function installSkill(skillId) {
+            alert(`在未來版本中，將會自動透過 MCP 或分支下載此模組: ${skillId}`);
+        }
+
+        // Initialize
+        loadSkills();
+    </script>
+</body>
+</html>
