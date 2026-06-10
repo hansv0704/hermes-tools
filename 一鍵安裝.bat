@@ -68,6 +68,10 @@ if %errorlevel% neq 0 (
     pause && exit /b 1
 )
 echo [OK] API Keys 已解密安裝
+
+:: 追加工作區路徑到 .env（sync 腳本需要）
+echo HERMES_WORKSPACE=%%USERPROFILE%%\Desktop\Hermes工具區>> "%ALICE_ENV%"
+
 echo.
 
 :: === 同步記憶 ===
@@ -88,6 +92,19 @@ echo [5/5] 安裝技能...
 set SKILLS_DIR=%USERPROFILE%\AppData\Local\hermes\profiles\alice\skills\alice
 xcopy /E /Y "%~dp0hermes_skills\*" "%SKILLS_DIR%\" >nul 2>nul
 echo [OK] 技能已安裝
+echo.
+
+:: === 設定自動同步 ===
+echo [6/6] 設定自動同步...
+:: 複製同步腳本
+set ALICE_SCRIPTS=%USERPROFILE%\AppData\Local\hermes\profiles\alice\scripts
+mkdir "%ALICE_SCRIPTS%" 2>nul
+copy /Y "%~dp0scripts\sync_memory_github.py" "%ALICE_SCRIPTS%\sync_memory_github.py" >nul 2>nul
+:: 建立 cron（每30分鐘自動推送記憶到 GitHub）
+hermes -p alice cron create "every 30m" --script "scripts/sync_memory_github.py" --no_agent --deliver local --name "記憶GitHub同步" >nul 2>nul
+:: 初次同步
+python "%~dp0scripts\sync_memory_github.py" push
+echo [OK] 自動同步已設定（每30分鐘）
 echo.
 
 :: === 設定 Telegram config ===
