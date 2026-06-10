@@ -55,6 +55,7 @@ if %errorlevel% neq 0 (
 
 :: === 解密並安裝 API Keys ===
 echo [3/5] 解密 API Keys...
+echo.
 set ALICE_ENV=%USERPROFILE%\AppData\Local\hermes\profiles\alice\.env
 call :find_openssl
 if "%OPENSSL%"=="" (
@@ -62,13 +63,16 @@ if "%OPENSSL%"=="" (
     echo    請確認 Git 已安裝並重試
     pause && exit /b 1
 )
-"%OPENSSL%" enc -d -aes-256-cbc -pbkdf2 -pass pass:0704 -in "%~dp0.env.enc" -out "%ALICE_ENV%" 2>nul
+:decrypt_retry
+set /p PASSWORD="請輸入解密密碼: "
+"%OPENSSL%" enc -d -aes-256-cbc -pbkdf2 -pass pass:%PASSWORD% -in "%~dp0.env.enc" -out "%ALICE_ENV%" 2>nul
 if %errorlevel% neq 0 (
-    echo [X] 解密失敗，請確認 .env.enc 檔案存在
-    pause && exit /b 1
+    echo [X] 解密失敗，密碼錯誤或檔案損毀
+    echo.
+    goto decrypt_retry
 )
 echo [OK] API Keys 已解密安裝
-
+echo.
 :: 追加工作區路徑到 .env（sync 腳本需要）
 echo HERMES_WORKSPACE=%%USERPROFILE%%\Desktop\Hermes工具區>> "%ALICE_ENV%"
 
