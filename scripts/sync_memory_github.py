@@ -128,7 +128,7 @@ def push():
 
 
 def pull():
-    """GitHub → 本地（偵測版本變更整份覆蓋，否則逐條合併）"""
+    """GitHub → 本地（逐條加入，不覆蓋既有條目）"""
     try:
         subprocess.run(["git", "pull"],
                        cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
@@ -136,38 +136,10 @@ def pull():
         print(f"[X] Git pull 失敗: {e}")
         return False
 
-    # 檢查版本號：有變更 = 主機壓縮過，整份覆蓋
-    version_file = REPO_MEM_DIR / ".version"
-    local_version_file = HERMES_MEM_DIR / ".version"
-    force_overwrite = False
-    if version_file.exists():
-        try:
-            remote_ver = int(version_file.read_text().strip())
-            local_ver = int(local_version_file.read_text().strip()) if local_version_file.exists() else 0
-            if remote_ver > local_ver:
-                force_overwrite = True
-                print(f"[!] 版本變更 v{local_ver}→v{remote_ver}，整份覆蓋")
-        except:
-            pass
-
     HERMES_MEM_DIR.mkdir(parents=True, exist_ok=True)
     HERMES_DEFAULT_MEM_DIR.mkdir(parents=True, exist_ok=True)
-
-    if force_overwrite:
-        # 整份覆蓋模式
-        for fname in FILES:
-            src = REPO_MEM_DIR / fname
-            if src.exists():
-                shutil.copy2(src, HERMES_MEM_DIR / fname)
-                shutil.copy2(src, HERMES_DEFAULT_MEM_DIR / fname)
-                print(f"[OK] 整份覆蓋: {fname}")
-        # 同步版本號
-        shutil.copy2(version_file, local_version_file)
-        print("[OK] 記憶已同步（權威版本）")
-        return True
-
-    # 逐條合併模式（日常 sync）
     pulled = False
+
     for fname in FILES:
         repo_file = REPO_MEM_DIR / fname
         local_file = HERMES_MEM_DIR / fname

@@ -66,16 +66,7 @@ def compress():
     repo_mem.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(MEMORY_FILE, repo_mem)
 
-    # 遞增版本號（其他電腦偵測到版本變更 = 整份覆蓋）
-    version_file = REPO_DIR / "memory" / ".version"
-    try:
-        ver = int(version_file.read_text().strip()) + 1
-    except:
-        ver = 1
-    version_file.write_text(str(ver))
-    print(f"[OK] 版本號: {ver}")
-
-    # git push
+    # git push（其他電腦下次 git pull 自然拿到壓縮結果）
     try:
         subprocess.run(["git", "add", "memory/"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
