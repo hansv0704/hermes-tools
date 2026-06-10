@@ -76,28 +76,42 @@ def push():
 
 
 def pull():
-    """GitHub repo → 本地記憶"""
+    """GitHub repo → 本地記憶（只在 GitHub 較新時才覆蓋）"""
     # 先 git pull
     try:
         result = subprocess.run(["git", "pull"],
                                 cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
-        if "Already up to date" in result.stdout:
-            return True
     except Exception as e:
         print(f"[X] Git pull 失敗: {e}")
         return False
 
-    # 複製 repo memory → Hermes
+    # 複製 repo memory → Hermes（只在 GitHub 較新時）
     HERMES_MEM_DIR.mkdir(parents=True, exist_ok=True)
     HERMES_DEFAULT_MEM_DIR.mkdir(parents=True, exist_ok=True)
+    pulled = False
 
     for fname in FILES:
         src = REPO_MEM_DIR / fname
+        dst = HERMES_MEM_DIR / fname
         if src.exists():
-            shutil.copy2(src, HERMES_MEM_DIR / fname)
-            shutil.copy2(src, HERMES_DEFAULT_MEM_DIR / fname)
-            print(f"[OK] 已同步: {fname}")
-    print("[OK] 記憶已從 GitHub 拉取")
+            # 只在 GitHub 版本比本地新時才覆蓋
+            if _files_differ(src, dst):
+                src_mtime = src.stat().st_mtime if src.exists() else 0
+                dst_mtime = dst.stat().st_mtime if dst.exists() else 0
+                if src_mtime > dst_mtime:
+                    shutil.copy2(src, dst)
+                    shutil.copy2(src, HERMES_DEFAULT_MEM_DIR / fname)
+                    print(f"[OK] 已同步（GitHub 較新）: {fname}")
+                    pulled = True
+                else:
+                    print(f"[=] 跳過（本地較新）: {fname}")
+            else:
+                print(f"[=] 內容相同: {fname}")
+
+    if pulled:
+        print("[OK] 記憶已從 GitHub 拉取")
+    else:
+        print("[OK] 無需同步（本地已是最新）")
     return True
 
 
