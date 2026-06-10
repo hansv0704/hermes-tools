@@ -110,16 +110,18 @@ class GisHandler(FileSystemEventHandler):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(new_items)} new!")
         for uid in new_items:
             level = pending_details.get(uid, "alert")
-            if level in ("alert", "freeze"):
-                emoji, lt, detail = "RED", "警戒", "超過警戒基準值"
+            if level == "freeze":
+                emoji, lt, detail = "🧊", "⚠️ 數據凍結", "監測數據已凍結，請確認儀器狀態"
+            elif level == "alert":
+                emoji, lt, detail = "🔴", "🚨 達警戒", "數值已超過警戒管理基準值"
             elif level == "attention":
-                emoji, lt, detail = "YEL", "注意", "超過注意基準值"
+                emoji, lt, detail = "🟡", "⚡ 達注意", "數值已超過注意管理基準值"
             else:
-                emoji, lt, detail = "WARN", "異常", "數值異常"
+                emoji, lt, detail = "🚨", "⚠️ 異常", "偵測到數值異常"
             print(f"  {emoji} {uid} ({lt}): chart...")
             chart_path, msg = generate_chart(uid)
             if chart_path:
-                caption = f"GIS {lt}警報\n測站: {uid}\n{detail}\n24h趨勢圖"
+                caption = f"{emoji} <b>{lt}</b>\n📍 測站：<code>{uid}</code>\n📋 {detail}\n\n📊 24h 全維度趨勢圖已自動生成"
                 send_photo(chart_path, caption)
             else:
                 print(f"  chart fail: {msg}")
