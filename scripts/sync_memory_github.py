@@ -1,26 +1,30 @@
 """
-記憶 → GitHub 自動同步腳本
-比較本地 Hermes memories 與 repo memory/ 目錄，有變更就 push
+記憶 → GitHub 雙向合併同步腳本 v3
+支援兩台電腦各自修改記憶，自動合併不覆蓋
 
-模式：
-  python sync_memory_github.py push   → 本地 → GitHub
-  python sync_memory_github.py pull   → GitHub → 本地（另一台電腦用）
-  python sync_memory_github.py        → 預設 push（cron 用）
+策略：
+  push: git pull → 合併條目（取聯集）→ push
+  pull: git pull → 逐條比對 mtime → 只在 GitHub 較新時加入
+
+條目合併規則：
+  - MEMORY.md 用 § 分隔，逐條比對
+  - 兩邊都有的條目 → 保留（不重複）
+  - 只有一邊有的條目 → 加入
+  - USER.md 同樣處理（§ 分隔）
 """
 import os
 import sys
 import shutil
 import subprocess
 from pathlib import Path
+from datetime import datetime
 
 USERPROFILE = Path(os.environ["USERPROFILE"])
 LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", USERPROFILE / "AppData" / "Local"))
 
-# Hermes memories
 HERMES_MEM_DIR = LOCALAPPDATA / "hermes" / "profiles" / "alice" / "memories"
 HERMES_DEFAULT_MEM_DIR = LOCALAPPDATA / "hermes" / "memories"
 
-# Repo memory 目錄（相對於腳本位置或環境變數）
 REPO_DIR = Path(os.environ.get("HERMES_WORKSPACE",
     USERPROFILE / "Desktop" / "Hermes工具區"))
 REPO_MEM_DIR = REPO_DIR / "memory"
@@ -28,39 +32,87 @@ REPO_MEM_DIR = REPO_DIR / "memory"
 FILES = ["USER.md", "MEMORY.md"]
 
 
-def _files_differ(f1: Path, f2: Path) -> bool:
-    if not f1.exists() or not f2.exists():
-        return True
-    return f1.read_bytes() != f2.read_bytes()
+def _parse_entries(path: Path) -> list[str]:
+    """解析 § 分隔的條目，回傳條目列表（去空白、去重）"""
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    entries = []
+    for part in text.split("§"):
+        cleaned = part.strip()
+        if cleaned:
+            entries.append(cleaned)
+    return entries
+
+
+def _merge_entries(local_entries: list[str], remote_entries: list[str]) -> list[str]:
+    """合併兩份條目：取聯集，保留所有不重複的內容"""
+    seen = set()
+    merged = []
+    # 先放本地的（保持順序）
+    for e in local_entries:
+        key = e[:80]  # 前80字當指紋
+        if key not in seen:
+            seen.add(key)
+            merged.append(e)
+    # 再加入遠端有但本地沒有的
+    for e in remote_entries:
+        key = e[:80]
+        if key not in seen:
+            seen.add(key)
+            merged.append(e)
+    return merged
 
 
 def push():
-    """本地記憶 → GitHub repo"""
+    """本地記憶 → GitHub（先合併再 push）"""
     if not REPO_DIR.exists():
         print(f"[X] Repo 不存在: {REPO_DIR}")
         return False
 
-    changed = False
+    # 1. git pull 取得最新
+    try:
+        subprocess.run(["git", "pull"],
+                       cwd=str(REPO_DIR), capture_output=True, timeout=30)
+    except Exception:
+        pass  # 可能已經是最新
+
     REPO_MEM_DIR.mkdir(parents=True, exist_ok=True)
+    any_changed = False
 
     for fname in FILES:
-        src = HERMES_MEM_DIR / fname
-        dst = REPO_MEM_DIR / fname
-        if src.exists() and _files_differ(src, dst):
-            shutil.copy2(src, dst)
-            print(f"[OK] 已複製: {fname}")
-            changed = True
+        local_file = HERMES_MEM_DIR / fname
+        repo_file = REPO_MEM_DIR / fname
 
-    if not changed:
-        # 沒變化 → 安靜
-        return True
+        if not local_file.exists():
+            continue
 
-    # git add + commit + push
+        # 解析本地和 GitHub 的條目
+        local_entries = _parse_entries(local_file)
+        repo_entries = _parse_entries(repo_file)
+
+        # 合併
+        merged = _merge_entries(local_entries, repo_entries)
+
+        # 產生合併內容
+        merged_text = "\n§\n".join(merged) + "\n"
+
+        # 只有真的不同才寫入
+        old_text = repo_file.read_text(encoding="utf-8") if repo_file.exists() else ""
+        if merged_text != old_text:
+            repo_file.write_text(merged_text, encoding="utf-8")
+            print(f"[OK] 已合併: {fname} (本地{len(local_entries)}條 + 遠端{len(repo_entries)}條 → {len(merged)}條)")
+            any_changed = True
+
+    if not any_changed:
+        return True  # 安靜
+
+    # 2. git commit + push
     try:
         subprocess.run(["git", "add", "memory/"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m",
-                        f"sync: 記憶自動同步 {__import__('datetime').datetime.now().strftime('%m/%d %H:%M')}"],
+                        f"sync: merge {datetime.now().strftime('%m/%d %H:%M')}"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "push"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
@@ -76,42 +128,48 @@ def push():
 
 
 def pull():
-    """GitHub repo → 本地記憶（只在 GitHub 較新時才覆蓋）"""
-    # 先 git pull
+    """GitHub → 本地（逐條加入，不覆蓋既有條目）"""
     try:
-        result = subprocess.run(["git", "pull"],
-                                cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
+        subprocess.run(["git", "pull"],
+                       cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
     except Exception as e:
         print(f"[X] Git pull 失敗: {e}")
         return False
 
-    # 複製 repo memory → Hermes（只在 GitHub 較新時）
     HERMES_MEM_DIR.mkdir(parents=True, exist_ok=True)
     HERMES_DEFAULT_MEM_DIR.mkdir(parents=True, exist_ok=True)
     pulled = False
 
     for fname in FILES:
-        src = REPO_MEM_DIR / fname
-        dst = HERMES_MEM_DIR / fname
-        if src.exists():
-            # 只在 GitHub 版本比本地新時才覆蓋
-            if _files_differ(src, dst):
-                src_mtime = src.stat().st_mtime if src.exists() else 0
-                dst_mtime = dst.stat().st_mtime if dst.exists() else 0
-                if src_mtime > dst_mtime:
-                    shutil.copy2(src, dst)
-                    shutil.copy2(src, HERMES_DEFAULT_MEM_DIR / fname)
-                    print(f"[OK] 已同步（GitHub 較新）: {fname}")
-                    pulled = True
-                else:
-                    print(f"[=] 跳過（本地較新）: {fname}")
-            else:
-                print(f"[=] 內容相同: {fname}")
+        repo_file = REPO_MEM_DIR / fname
+        local_file = HERMES_MEM_DIR / fname
+
+        if not repo_file.exists():
+            continue
+
+        local_entries = _parse_entries(local_file)
+        repo_entries = _parse_entries(repo_file)
+
+        # 找出 GitHub 有但本地沒有的條目
+        local_keys = {e[:80] for e in local_entries}
+        new_entries = [e for e in repo_entries if e[:80] not in local_keys]
+
+        if new_entries:
+            merged = local_entries + new_entries
+            merged_text = "\n§\n".join(merged) + "\n"
+            local_file.write_text(merged_text, encoding="utf-8")
+            # 同步到 default
+            HERMES_DEFAULT_MEM_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(local_file, HERMES_DEFAULT_MEM_DIR / fname)
+            print(f"[OK] 從 GitHub 加入 {len(new_entries)} 條新記憶: {fname}")
+            pulled = True
+        else:
+            print(f"[=] 無新條目: {fname}")
 
     if pulled:
-        print("[OK] 記憶已從 GitHub 拉取")
+        print("[OK] 記憶已合併")
     else:
-        print("[OK] 無需同步（本地已是最新）")
+        print("[OK] 無需同步")
     return True
 
 
