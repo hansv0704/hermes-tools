@@ -104,11 +104,14 @@ echo [6/6] 設定自動同步...
 set ALICE_SCRIPTS=%USERPROFILE%\AppData\Local\hermes\profiles\alice\scripts
 mkdir "%ALICE_SCRIPTS%" 2>nul
 copy /Y "%~dp0scripts\sync_memory_github.py" "%ALICE_SCRIPTS%\sync_memory_github.py" >nul 2>nul
-:: 建立 cron（每30分鐘自動推送記憶到 GitHub）
-hermes -p alice cron create "every 30m" --script "scripts/sync_memory_github.py" --no_agent --deliver local --name "記憶GitHub同步" >nul 2>nul
-:: 初次同步
+:: 初次同步（push 本地記憶到 GitHub）
 python "%~dp0scripts\sync_memory_github.py" push
-echo [OK] 自動同步已設定（每30分鐘）
+echo [OK] 記憶已同步到 GitHub
+echo.
+
+:: === 設定預設 profile ===
+hermes profile use alice >nul 2>nul
+echo [OK] 已設 Alice 為預設 profile
 echo.
 
 :: === 設定 Telegram config ===
@@ -122,11 +125,12 @@ echo   +===========================================+
 echo   ^|            [OK] 安裝完成！                 ^|
 echo   +===========================================+
 echo   ^|                                           ^|
-echo   ^|  啟動（務必加 -p alice）：                 ^|
-echo   ^|    hermes -p alice                        ^|
-echo   ^|    hermes -p alice gateway run            ^|
+echo   ^|  直接打開桌面版 Hermes 即可                 ^|
+echo   ^|  已自動設為 Alice profile                  ^|
 echo   ^|                                           ^|
-echo   ^|  只用 hermes = default profile = 空的     ^|
+echo   ^|  打開後第一句話：                           ^|
+echo   ^|  「幫我建立記憶同步 cron」                  ^|
+echo   ^|  我會自動幫你設定完成                       ^|
 echo   ^|                                           ^|
 echo   +===========================================+
 echo.
