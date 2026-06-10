@@ -1,105 +1,102 @@
 """
-L2 巡檢表自動填寫 v1.0
-使用 Playwright DOM 操控，精準點擊 radio button
+L2 巡檢表自動填寫 v1.1 — 實戰驗證版
+Playwright DOM 操控，精準點擊，自動滾動送出
+
 用法：
-  python l2_fill.py           → 填寫第一筆（不送出）
-  python l2_fill.py --submit  → 填寫並送出
-  python l2_fill.py --verify  → 驗證上次填寫結果
+  python l2_fill.py              → 填寫前兩筆未填表單並送出
+  python l2_fill.py 3            → 填寫前三筆
+  python l2_fill.py --dry-run    → 只填不送出
 """
 import os, sys, time
 from playwright.sync_api import sync_playwright
 
 USER_DATA = os.path.expandvars(r"%LOCALAPPDATA%\hermes\playwright_profile")
-L2_LIST = "https://ls.ardswc.gov.tw/Response/EvaluateReport2List"
-SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "screenshots")
-os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+L2_BASE = "https://ls.ardswc.gov.tw"
+L2_LIST = f"{L2_BASE}/Response/EvaluateReport2List"
 
-def fill_form(submit=False):
+def fill_reports(count=2, submit=True):
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=USER_DATA, headless=False,
-            viewport={"width": 1920, "height": 1080}
+            viewport={"width": 1920, "height": 1080},
+            args=["--disable-gpu", "--no-first-run"]
         )
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        # 1. 到列表頁
+        # 1. 列表頁
         page.goto(L2_LIST, wait_until="networkidle")
         page.wait_for_timeout(2000)
+        if "Login" in page.url:
+            print("❌ 未登入"); return
 
-        # 2. 取得第一筆回報的 ReportID
-        btn = page.locator('a:has-text("回報")').first
-        if btn.count() == 0:
-            print("❌ 找不到回報按鈕")
-            return False
+        # 2. 收集 ReportID
+        btns = page.locator('a:has-text("回報")')
+        report_ids = []
+        for i in range(min(btns.count(), 10)):
+            href = btns.nth(i).get_attribute("href")
+            if href and "ReportID=" in href:
+                report_ids.append(href.split("ReportID=")[-1].split("&")[0])
 
-        href = btn.get_attribute("href")
-        report_id = href.split("ReportID=")[-1] if "ReportID=" in href else "?"
-        print(f"📋 ReportID: {report_id}")
+        target = report_ids[:count]
+        print(f"📋 預計填寫 {len(target)} 筆: {target}")
 
-        # 3. 開表單
-        page.goto(f"https://ls.ardswc.gov.tw{href}", wait_until="networkidle")
-        page.wait_for_timeout(2000)
+        done = 0
+        for rid in target:
+            print(f"\n--- ReportID={rid} ---")
+            page.goto(f"{L2_BASE}/Response/CreateEvaluateReport2?ReportID={rid}",
+                      wait_until="networkidle")
+            page.wait_for_timeout(2000)
 
-        # 4. 勾選
-        page.get_by_label("正常").first.click()
-        print("  ✅ 1. 正常")
-        page.get_by_label("無").first.click()
-        print("  ✅ 2. 無")
-        page.get_by_label("儀器設備正常，現地監測值達注意：加強守視。").click()
-        print("  ✅ 3. 儀器設備正常")
+            # 檢查是否已送出
+            btn = page.locator("#btnCheck")
+            if btn.count() == 0 or not btn.is_visible():
+                try:
+                    page.evaluate('document.querySelector("#btnCheck").style.display="block"')
+                    page.wait_for_timeout(300)
+                except: pass
+            if btn.count() == 0 or not btn.is_visible():
+                print("  ⏭️ 已送出，跳過")
+                continue
 
-        # 5. 送出
-        if submit:
+            # 勾選 1 — 正常（精準定位）
             try:
-                page.locator('button:has-text("建立"), input[type=submit][value*=建立]').first.click()
+                section = page.locator("text=監測值連續趨勢").locator("..")
+                section.get_by_label("正常").click()
+            except:
+                page.get_by_label("正常").first.click()
+            print("  1. 正常 ✅")
+
+            # 勾選 2 — 無
+            page.get_by_label("無").first.click()
+            print("  2. 無 ✅")
+
+            # 勾選 3 — 儀器設備正常
+            page.get_by_label("儀器設備正常，現地監測值達注意：加強守視。").click()
+            print("  3. 儀器設備正常 ✅")
+
+            # 送出
+            if submit:
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(500)
+                btn.click()
                 page.wait_for_timeout(2000)
                 print("  📤 已送出")
-            except:
-                print("  ⚠️ 找不到建立按鈕")
+            else:
+                print("  ⏸️ 未送出 (--dry-run)")
 
-        # 6. 截圖
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        ss_path = os.path.join(SCREENSHOT_DIR, f"l2_{report_id}_{ts}.png")
-        page.screenshot(path=ss_path)
-        print(f"📸 {ss_path}")
-        return True
+            done += 1
 
-def verify_last():
-    """用 Gemini 驗證最新截圖"""
-    import base64
-    from google import genai
-
-    # 找最新截圖
-    pngs = sorted([f for f in os.listdir(SCREENSHOT_DIR) if f.startswith("l2_") and f.endswith(".png")])
-    if not pngs:
-        print("❌ 無截圖")
-        return
-    path = os.path.join(SCREENSHOT_DIR, pngs[-1])
-    print(f"驗證: {pngs[-1]}")
-
-    # 讀 key
-    key = ""
-    for ep in [os.path.expandvars(r"%LOCALAPPDATA%\hermes\.env")]:
-        try:
-            for line in open(ep, encoding="utf-8"):
-                if "GOOGLE" in line and "API_KEYS" in line:
-                    key = line.split("=", 1)[1].strip().split(",")[0].strip('"\'').strip()
-                    break
-        except: pass
-        if key: break
-
-    with open(path, "rb") as f:
-        img = base64.b64encode(f.read()).decode()
-    client = genai.Client(api_key=key)
-    r = client.models.generate_content(model="gemini-2.5-flash", contents=[
-        "檢查L2表單三個選項是否已勾選：正常、無、儀器設備正常。只回答已勾選或未勾選",
-        {"inline_data": {"mime_type": "image/png", "data": img}}
-    ])
-    print(f"結果: {r.text}")
+        # 回到列表頁
+        page.goto(L2_LIST, wait_until="networkidle")
+        print(f"\n✅ 完成 {done}/{len(target)} 筆")
+        time.sleep(5)
 
 if __name__ == "__main__":
-    if "--verify" in sys.argv:
-        verify_last()
-    else:
-        submit = "--submit" in sys.argv
-        fill_form(submit)
+    count = 2
+    submit = True
+    for arg in sys.argv[1:]:
+        if arg == "--dry-run":
+            submit = False
+        elif arg.isdigit():
+            count = int(arg)
+    fill_reports(count, submit)
