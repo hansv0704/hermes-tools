@@ -136,9 +136,15 @@ echo   +===========================================+
 echo.
 echo 按任意鍵安裝背景服務...
 pause >nul
-hermes -p alice gateway install >nul 2>nul
-hermes -p alice gateway run
-echo [OK] Gateway 已啟動（開機自動運行）
+:: 檢查是否已有 Gateway 在跑（避免多台電腦搶 TG）
+hermes -p alice gateway status 2>nul | findstr "running" >nul
+if %errorlevel% neq 0 (
+    hermes -p alice gateway install >nul 2>nul
+    hermes -p alice gateway run
+    echo [OK] Gateway 已啟動（開機自動運行）
+) else (
+    echo [!] Gateway 已在運行，跳過（避免多台電腦搶 TG）
+)
 pause
 exit /b 0
 
