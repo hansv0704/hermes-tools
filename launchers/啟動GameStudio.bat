@@ -13,6 +13,6 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5003 ^| findstr LISTENING') 
     echo [清理] 舊進程已終止
 )
 echo [啟動] 正在啟動 Game Studio...
-cd /d "%~dp0"
-python run_game_studio.py
+cd /d "%~dp0.."
+python "%~dp0..\apps\run_game_studio.py"
 pause

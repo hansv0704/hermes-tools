@@ -11,11 +11,11 @@ echo =================================================
 echo.
 
 :: 確保當前目錄是正確的 (切換到這隻 bat 檔案所在的資料夾)
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 :: ── 環境檢查 ──
 echo [1/2] 執行環境檢查...
-python setup_check.py
+python legacy\setup_check.py
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo =================================================
@@ -31,7 +31,7 @@ echo [2/2] 環境就緒，啟動 Alice 主程式...
 echo.
 
 :: 啟動機器人
-python main.py
+python legacy\main.py
 
 :: 如果程式崩潰或關閉，暫停畫面讓您看得到錯誤訊息
 echo.
