@@ -1,0 +1,76 @@
+From 6a1c07da267cc66c99f2b71edfc3f2abbff0b61e Mon Sep 17 00:00:00 2001
+From: hans <hans@hermes.local>
+Date: Fri, 12 Jun 2026 03:24:56 +0800
+Subject: [PATCH] fix: replace os.execvpe with subprocess.Popen on Windows to
+ prevent ACCESS_VIOLATION
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+os.execvpe is not a real exec on Windows — the CRT emulates it with
+spawn + exit, and the emulation is fragile. When the parent is itself
+a spawned child process (e.g. Electron's child_process.spawn), the
+execvpe call intermittently crashes with ACCESS_VIOLATION (0xC0000005),
+triggering an infinite respawn loop in the desktop app.
+
+Three-layer fix:
+
+1. Replace os.execvpe with subprocess.Popen(DETACHED_PROCESS |
+   CREATE_NO_WINDOW) + sys.exit(0) on win32. POSIX keeps os.execvpe.
+
+2. Set HERMES_PROFILE_FROM_CLI=1 env var in _apply_profile_override
+   when --profile comes from an explicit CLI flag.
+
+3. Skip machine-dashboard re-exec when HERMES_PROFILE_FROM_CLI is set.
+---
+ hermes_cli/main.py | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/hermes_cli/main.py b/hermes_cli/main.py
+index 5744d8a..58bcc93 100644
+--- a/hermes_cli/main.py
++++ b/hermes_cli/main.py
+@@ -452,6 +452,10 @@ def _apply_profile_override() -> None:
+             )
+             return
+         os.environ["HERMES_HOME"] = hermes_home
++        # Mark that profile came from an explicit CLI flag (not sticky file).
++        # Used downstream by cmd_dashboard to skip the machine-dashboard
++        # re-exec when the user explicitly asked for this profile.
++        os.environ["HERMES_PROFILE_FROM_CLI"] = "1"
+         # Strip the flag from argv so argparse doesn't choke
+         if consume > 0 and profile_index is not None:
+             start = profile_index + 1  # +1 because argv is sys.argv[1:]
+@@ -10327,6 +10331,7 @@ def cmd_dashboard(args):
+         _launch_profile not in ("default", "custom")
+         and not getattr(args, "isolated", False)
+         and not getattr(args, "open_profile", "")
++        and not os.environ.get("HERMES_PROFILE_FROM_CLI")  # explicit --profile on cmdline → user intent
+     ):
+         url = f"http://{args.host or '127.0.0.1'}:{args.port}/?profile={_launch_profile}"
+         if _dashboard_listening(args.host, args.port):
+@@ -10361,7 +10366,20 @@ def cmd_dashboard(args):
+         env = os.environ.copy()
+         # Drop the profile HERMES_HOME so the child binds the machine root.
+         env.pop("HERMES_HOME", None)
+-        os.execvpe(sys.executable, reexec_argv, env)
++        # os.execvpe on Windows is a well-known source of ACCESS_VIOLATION
++        # crashes (it is not a real exec — the CRT emulates it with spawn +
++        # exit, and the emulation is fragile, especially when the parent is
++        # itself a spawned child process, e.g. Electron's child_process).
++        # Use subprocess.Popen + sys.exit instead, which is safe everywhere.
++        if sys.platform == "win32":
++            subprocess.Popen(
++                [sys.executable] + reexec_argv[1:],
++                env=env,
++                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
++            )
++            sys.exit(0)
++        else:
++            os.execvpe(sys.executable, reexec_argv, env)
+ 
+     # Attach gui.log early so dashboard startup/build failures are captured in
+     # the same logs directory as every other Hermes surface.
+-- 
+2.52.0.windows.1
+
