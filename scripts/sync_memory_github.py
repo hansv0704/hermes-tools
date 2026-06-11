@@ -64,18 +64,38 @@ def _merge_entries(local_entries: list[str], remote_entries: list[str]) -> list[
     return merged
 
 
+def _git_safe_pull(repo_dir: Path) -> bool:
+    """安全 git pull：衝突時自動 stash 後 pull，不讓同步卡住"""
+    try:
+        r = subprocess.run(
+            ["git", "pull", "--rebase", "--autostash"],
+            cwd=str(repo_dir), capture_output=True, text=True, timeout=30
+        )
+        if r.returncode != 0:
+            # --autostash 可能不支援（舊版 git），手動 stash
+            subprocess.run(["git", "stash"], cwd=str(repo_dir),
+                           capture_output=True, timeout=10)
+            r2 = subprocess.run(["git", "pull", "--rebase"],
+                                cwd=str(repo_dir), capture_output=True, text=True, timeout=30)
+            subprocess.run(["git", "stash", "drop"], cwd=str(repo_dir),
+                           capture_output=True, timeout=10)
+            if r2.returncode != 0:
+                print(f"[!] git pull 失敗: {r2.stderr[:200]}")
+                return False
+        return True
+    except Exception as e:
+        print(f"[!] git pull 異常: {e}")
+        return False
+
+
 def push():
     """本地記憶 → GitHub（先合併再 push）"""
     if not REPO_DIR.exists():
         print(f"[X] Repo 不存在: {REPO_DIR}")
         return False
 
-    # 1. git pull 取得最新
-    try:
-        subprocess.run(["git", "pull"],
-                       cwd=str(REPO_DIR), capture_output=True, timeout=30)
-    except Exception:
-        pass  # 可能已經是最新
+    # 1. 安全 git pull 取得最新
+    _git_safe_pull(REPO_DIR)
 
     REPO_MEM_DIR.mkdir(parents=True, exist_ok=True)
     any_changed = False
@@ -107,8 +127,8 @@ def push():
     if not any_changed:
         return True  # 安靜
 
-    # 2. git commit + push（全倉庫同步，push 被拒時 rebase 重試）
-    def try_push():
+    # 2. git commit + push（全倉庫同步）
+    try:
         subprocess.run(["git", "add", "-A"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m",
@@ -116,20 +136,10 @@ def push():
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "push"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
-
-    try:
-        try_push()
         print("[OK] 已推送到 GitHub")
-    except subprocess.CalledProcessError:
-        # push 被拒 → rebase 重試
-        try:
-            subprocess.run(["git", "pull", "--rebase"],
-                           cwd=str(REPO_DIR), capture_output=True, timeout=30)
-            try_push()
-            print("[OK] 已推送到 GitHub (rebase)")
-        except subprocess.CalledProcessError as e:
-            print(f"[X] Git 失敗: {e.stderr.decode() if e.stderr else e}")
-            return False
+    except subprocess.CalledProcessError as e:
+        print(f"[X] Git 失敗: {e.stderr.decode() if e.stderr else e}")
+        return False
     except subprocess.TimeoutExpired:
         print("[X] Git push 逾時")
         return False
@@ -139,11 +149,7 @@ def push():
 
 def pull():
     """GitHub → 本地（逐條加入，不覆蓋既有條目）"""
-    try:
-        subprocess.run(["git", "pull"],
-                       cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
-    except Exception as e:
-        print(f"[X] Git pull 失敗: {e}")
+    if not _git_safe_pull(REPO_DIR):
         return False
 
     HERMES_MEM_DIR.mkdir(parents=True, exist_ok=True)
