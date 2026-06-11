@@ -107,12 +107,12 @@ def push():
     if not any_changed:
         return True  # 安靜
 
-    # 2. git commit + push
+    # 2. git commit + push（全倉庫同步）
     try:
-        subprocess.run(["git", "add", "memory/"],
+        subprocess.run(["git", "add", "-A"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m",
-                        f"sync: merge {datetime.now().strftime('%m/%d %H:%M')}"],
+                        f"sync: auto {datetime.now().strftime('%m/%d %H:%M')}"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "push"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
@@ -167,6 +167,20 @@ def pull():
         print("[OK] 記憶已合併")
     else:
         print("[OK] 無需同步")
+
+    # 部署更新的腳本到 alice profile
+    for subdir, target_name in [("scripts", "scripts"), ("hermes_skills", "skills/alice")]:
+        src_dir = REPO_DIR / subdir
+        if src_dir.exists():
+            dst_dir = LOCALAPPDATA / "hermes" / "profiles" / "alice" / target_name
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for f in src_dir.rglob("*"):
+                if f.is_file() and f.suffix in (".py", ".md", ".bat", ".txt"):
+                    rel = f.relative_to(src_dir)
+                    dst = dst_dir / rel
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    if not dst.exists() or f.read_bytes() != dst.read_bytes():
+                        shutil.copy2(f, dst)
     return True
 
 

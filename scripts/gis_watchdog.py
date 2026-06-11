@@ -107,7 +107,7 @@ class GisHandler(FileSystemEventHandler):
         new_items = [uid for uid in pending_set if uid not in known]
         if not new_items:
             return
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(new_items)} new!")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(new_items)} new!", flush=True)
         for uid in new_items:
             level = pending_details.get(uid, "alert")
             if level == "freeze":
@@ -128,16 +128,28 @@ class GisHandler(FileSystemEventHandler):
         save_state(list(pending_set))
 
 if __name__ == "__main__":
-    print(f"GIS Watchdog starting: {GIS_DIR}")
-    print(f"Token: {'OK' if TELEGRAM_TOKEN else 'MISSING'}")
+    print(f"GIS Watchdog v2.0 starting: {GIS_DIR}", flush=True)
+    print(f"Token: {'OK' if TELEGRAM_TOKEN else 'MISSING'}", flush=True)
+    # 啟動時也檢查一次現有 pending（處理重啟前累積的告警）
+    if os.path.exists(CONFIG_PATH):
+        try:
+            config = json.load(open(CONFIG_PATH, encoding="utf-8"))
+            pending = config.get("pending_set", [])
+            if pending:
+                print(f"Startup: found {len(pending)} existing pending, processing...", flush=True)
+                handler = GisHandler()
+                handler.last_triggered = {}
+                handler.on_modified(type('FakeEvent', (), {'is_directory': False, 'src_path': CONFIG_PATH})())
+        except Exception as e:
+            print(f"Startup check error: {e}", flush=True)
     observer = Observer()
     observer.schedule(GisHandler(), GIS_DIR, recursive=False)
     observer.start()
-    print("Watching (event-driven)...")
+    print("Watching (event-driven)...", flush=True)
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         observer.stop()
         observer.join()
-        print("Stopped")
+        print("Stopped", flush=True)
