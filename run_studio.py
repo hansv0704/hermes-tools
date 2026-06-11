@@ -3,6 +3,7 @@ import os
 import time
 import webbrowser
 from pathlib import Path
+from datetime import datetime
 
 # 確保能匯入 skills 資料夾
 BASE_DIR = Path(__file__).resolve().parent
