@@ -14,7 +14,6 @@
 """
 import os
 import sys
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,11 +25,8 @@ LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", USERPROFILE / "AppData" / "Lo
 HERMES_MEM_DIR = LOCALAPPDATA / "hermes" / "profiles" / "alice" / "memories"
 HERMES_DEFAULT_MEM_DIR = LOCALAPPDATA / "hermes" / "memories"
 
-# HERMES_WORKSPACE 可能存成未展開的 %USERPROFILE%，需手動展開
-_raw_ws = os.environ.get("HERMES_WORKSPACE", "")
-if _raw_ws:
-    _raw_ws = re.sub(r'%([^%]+)%', lambda m: os.environ.get(m.group(1), m.group(0)), _raw_ws)
-REPO_DIR = Path(_raw_ws) if _raw_ws else (USERPROFILE / "Desktop" / "Hermes工具區")
+REPO_DIR = Path(os.environ.get("HERMES_WORKSPACE",
+    USERPROFILE / "Desktop" / "Hermes工具區"))
 REPO_MEM_DIR = REPO_DIR / "memory"
 
 FILES = ["USER.md", "MEMORY.md"]
@@ -68,38 +64,18 @@ def _merge_entries(local_entries: list[str], remote_entries: list[str]) -> list[
     return merged
 
 
-def _git_safe_pull(repo_dir: Path) -> bool:
-    """安全 git pull：衝突時自動 stash 後 pull，不讓同步卡住"""
-    try:
-        r = subprocess.run(
-            ["git", "pull", "--rebase", "--autostash"],
-            cwd=str(repo_dir), capture_output=True, text=True, timeout=30
-        )
-        if r.returncode != 0:
-            # --autostash 可能不支援（舊版 git），手動 stash
-            subprocess.run(["git", "stash"], cwd=str(repo_dir),
-                           capture_output=True, timeout=10)
-            r2 = subprocess.run(["git", "pull", "--rebase"],
-                                cwd=str(repo_dir), capture_output=True, text=True, timeout=30)
-            subprocess.run(["git", "stash", "drop"], cwd=str(repo_dir),
-                           capture_output=True, timeout=10)
-            if r2.returncode != 0:
-                print(f"[!] git pull 失敗: {r2.stderr[:200]}")
-                return False
-        return True
-    except Exception as e:
-        print(f"[!] git pull 異常: {e}")
-        return False
-
-
 def push():
     """本地記憶 → GitHub（先合併再 push）"""
     if not REPO_DIR.exists():
         print(f"[X] Repo 不存在: {REPO_DIR}")
         return False
 
-    # 1. 安全 git pull 取得最新
-    _git_safe_pull(REPO_DIR)
+    # 1. git pull 取得最新
+    try:
+        subprocess.run(["git", "pull"],
+                       cwd=str(REPO_DIR), capture_output=True, timeout=30)
+    except Exception:
+        pass  # 可能已經是最新
 
     REPO_MEM_DIR.mkdir(parents=True, exist_ok=True)
     any_changed = False
@@ -131,8 +107,8 @@ def push():
     if not any_changed:
         return True  # 安靜
 
-    # 2. git commit + push（全倉庫同步）
-    try:
+    # 2. git commit + push（全倉庫同步，push 被拒時 rebase 重試）
+    def try_push():
         subprocess.run(["git", "add", "-A"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m",
@@ -140,10 +116,20 @@ def push():
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "push"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
+
+    try:
+        try_push()
         print("[OK] 已推送到 GitHub")
-    except subprocess.CalledProcessError as e:
-        print(f"[X] Git 失敗: {e.stderr.decode() if e.stderr else e}")
-        return False
+    except subprocess.CalledProcessError:
+        # push 被拒 → rebase 重試
+        try:
+            subprocess.run(["git", "pull", "--rebase"],
+                           cwd=str(REPO_DIR), capture_output=True, timeout=30)
+            try_push()
+            print("[OK] 已推送到 GitHub (rebase)")
+        except subprocess.CalledProcessError as e:
+            print(f"[X] Git 失敗: {e.stderr.decode() if e.stderr else e}")
+            return False
     except subprocess.TimeoutExpired:
         print("[X] Git push 逾時")
         return False
@@ -152,12 +138,37 @@ def push():
 
 
 def pull():
-    """GitHub → 本地（逐條加入，不覆蓋既有條目）"""
-    if not _git_safe_pull(REPO_DIR):
+    """GitHub → 本地（版本變更整份覆蓋，否則逐條合併）"""
+    try:
+        subprocess.run(["git", "pull"],
+                       cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        print(f"[X] Git pull 失敗: {e}")
         return False
 
     HERMES_MEM_DIR.mkdir(parents=True, exist_ok=True)
     HERMES_DEFAULT_MEM_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 檢查版本號：主機壓縮過 → 整份覆蓋
+    remote_ver_file = REPO_MEM_DIR / ".version"
+    local_ver_file = HERMES_MEM_DIR / ".version"
+    if remote_ver_file.exists():
+        try:
+            remote_ver = int(remote_ver_file.read_text().strip())
+            local_ver = int(local_ver_file.read_text().strip()) if local_ver_file.exists() else 0
+            if remote_ver > local_ver:
+                for fname in FILES:
+                    src = REPO_MEM_DIR / fname
+                    if src.exists():
+                        shutil.copy2(src, HERMES_MEM_DIR / fname)
+                        shutil.copy2(src, HERMES_DEFAULT_MEM_DIR / fname)
+                shutil.copy2(remote_ver_file, local_ver_file)
+                print(f"[OK] 版本 v{local_ver}→v{remote_ver}，整份覆蓋")
+                return True
+        except:
+            pass
+
+    # 逐條合併
     pulled = False
 
     for fname in FILES:
