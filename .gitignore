@@ -45,3 +45,12 @@ gis_monitor_state.json
 .vscode/
 .idea/
 screenshots/
+
+# Secrets & temp (auto-sync safety)
+.gemini_key_tmp
+.l2_pwd
+.n8n/
+nul
+temp_sync_workplace/
+工作區/
+*_backup.py

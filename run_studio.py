@@ -12,6 +12,19 @@ try:
     from skills.live_code_studio_skill import _start_server
     
     if __name__ == "__main__":
+        # ── 解析參數 ──
+        daemon_mode = "--daemon" in sys.argv
+        
+        # ── daemon 模式：重導向輸出到 log ──
+        if daemon_mode:
+            import io
+            log_path = BASE_DIR / "logs" / "lcs_daemon.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_file = open(str(log_path), "a", encoding="utf-8")
+            sys.stdout = log_file
+            sys.stderr = log_file
+            print(f"\n=== LCS v5.0 daemon started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
+        
         # ── 關閉模式 ──
         if len(sys.argv) > 1 and sys.argv[1] == "--stop":
             print("========================================")
@@ -59,7 +72,7 @@ try:
         
         # ── 啟動模式 ──
         print("========================================")
-        print("   Live Code Studio v4.0 (獨立進程版)")
+        print("   Live Code Studio v5.0 (Hermes 協作面板)")
         print("========================================")
         print(f"工作目錄: {BASE_DIR}")
         
@@ -92,11 +105,13 @@ try:
             print(f"\n✅ 啟動成功！")
             print(f"🔗 網址: {result}")
             
-            print("🌐 正在為您開啟瀏覽器分頁...")
-            webbrowser.open(result)
+            if not daemon_mode:
+                print("🌐 正在為您開啟瀏覽器分頁...")
+                webbrowser.open(result)
             
             print("\n提示: 此視窗為獨立運行，Alice 重啟不會影響此服務。")
-            print("按 Ctrl+C 可關閉此伺服器。")
+            if not daemon_mode:
+                print("按 Ctrl+C 可關閉此伺服器。")
             print("💡 或執行「關閉LiveCodeStudio.bat」強制關閉。")
             
             try:

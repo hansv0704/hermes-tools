@@ -46,7 +46,15 @@ _client = OpenAI(api_key=_deepseek_api_key, base_url="https://api.deepseek.com")
 _file_metadata: Dict[str, Dict[str, Any]] = {}  # 相對路徑 -> {mtime, size, hash}
 _modified_files: Dict[str, str] = {}  # 相對路徑 -> "modified"
 _history_versions: Dict[str, List[Dict[str, str]]] = {} 
-_repl_logs: List[str] = [] # 新增：CodeWhale REPL 日誌
+_repl_logs: List[str] = []
+
+# ═══ v5.0: Hermes 協作追蹤 ═══
+_tracked_files: Dict[str, Dict[str, Any]] = {}  # Hermes 註冊的追蹤檔案: rel_path -> {content, workdir, tracked_at}
+_workspaces: Dict[str, Dict[str, Any]] = {}     # 工作區: abs_path -> {name, added_at}
+_session_workdir: Optional[str] = None          # 當前 session 工作目錄
+_session_active: bool = False
+_session_started_at: Optional[str] = None
+
 _lock = threading.RLock()
 _server_instance = None
 _server_thread = None
@@ -78,42 +86,141 @@ def _add_history(rel_path: str, content: str):
             history.pop(0)
         history.append({"timestamp": timestamp, "content": content})
 
+# ═══ v5.0: 工作區與追蹤檔案輔助函式 ═══
+
+def _add_workspace(abs_path: str, name: str = None) -> dict:
+    """新增監控工作區"""
+    p = Path(abs_path).resolve()
+    if not p.exists() or not p.is_dir():
+        return {"status": "error", "message": f"目錄不存在: {abs_path}"}
+    ws_path = str(p)
+    with _lock:
+        if ws_path in _workspaces:
+            return {"status": "ok", "message": "工作區已存在", "path": ws_path}
+        _workspaces[ws_path] = {
+            "name": name or p.name,
+            "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "file_count": 0
+        }
+        # 掃描工作區檔案
+        _workspaces[ws_path]["file_count"] = _scan_workspace_files(ws_path)
+    add_repl_log(f"📂 工作區已新增: {_workspaces[ws_path]['name']} ({ws_path})")
+    return {"status": "ok", "path": ws_path, "name": _workspaces[ws_path]["name"]}
+
+def _remove_workspace(abs_path: str) -> dict:
+    """移除監控工作區"""
+    p = str(Path(abs_path).resolve())
+    with _lock:
+        if p in _workspaces:
+            name = _workspaces[p]["name"]
+            del _workspaces[p]
+            add_repl_log(f"📂 工作區已移除: {name}")
+            return {"status": "ok", "message": f"已移除: {name}"}
+    return {"status": "error", "message": "工作區不存在"}
+
+def _scan_workspace_files(abs_path: str) -> int:
+    """掃描工作區檔案並加入 _file_metadata"""
+    extensions = {".py", ".txt", ".json", ".env", ".md", ".bat", ".yaml", ".yml", ".html", ".css", ".js", ".csv", ".xml", ".cfg", ".ini", ".toml"}
+    count = 0
+    ws = Path(abs_path)
+    for f in ws.rglob("*"):
+        try:
+            if f.is_file() and f.suffix in extensions:
+                parts = f.parts
+                if any(p in ("__pycache__", ".git", "node_modules", "backups", "data", ".ipynb_checkpoints", "memory", "logs") for p in parts):
+                    continue
+                rel = str(f.relative_to(ws).as_posix())
+                stat = f.stat()
+                content = f.read_text("utf-8", errors="ignore")
+                with _lock:
+                    _file_metadata[rel] = {
+                        "mtime": stat.st_mtime,
+                        "size": stat.st_size,
+                        "hash": _compute_hash(content),
+                        "workspace": abs_path,
+                        "workspace_rel": rel
+                    }
+                count += 1
+        except Exception:
+            continue
+    return count
+
+def _track_file(rel_path: str, content: str, workdir: str = None) -> dict:
+    """Hermes 註冊追蹤檔案（含內容快照）"""
+    with _lock:
+        # 保存舊內容作為歷史版本（如果有）
+        if rel_path in _tracked_files:
+            old_content = _tracked_files[rel_path].get("content", "")
+            if old_content != content:
+                _add_history(rel_path, old_content)
+        
+        _tracked_files[rel_path] = {
+            "content": content,
+            "workdir": workdir or _session_workdir or str(BASE_DIR),
+            "tracked_at": datetime.now().strftime("%H:%M:%S"),
+            "hash": _compute_hash(content)
+        }
+        # 加入歷史
+        _add_history(rel_path, content)
+        # 標記為已修改（觸發前端通知）
+        _modified_files[rel_path] = "tracked"
+    
+    add_repl_log(f"📝 已追蹤: {rel_path}")
+    return {"status": "ok", "path": rel_path}
+
+def _untrack_file(rel_path: str) -> dict:
+    """取消追蹤檔案"""
+    with _lock:
+        if rel_path in _tracked_files:
+            del _tracked_files[rel_path]
+            _modified_files.pop(rel_path, None)
+            add_repl_log(f"📝 已取消追蹤: {rel_path}")
+            return {"status": "ok", "path": rel_path}
+    return {"status": "error", "message": "檔案未被追蹤"}
+
 def _scan_files(full_scan=False) -> Dict[str, Dict[str, Any]]:
     metadata = {}
     extensions = {".py", ".txt", ".json", ".env", ".md", ".bat", ".yaml", ".yml", ".html", ".css", ".js", ".csv", ".xml", ".cfg", ".ini", ".toml"}
-    for f in BASE_DIR.rglob("*"):
-        try:
-            if f.is_file() and f.suffix in extensions:
-                rel_path = f.relative_to(BASE_DIR)
-                parts = rel_path.parts
-                if any(p in ("__pycache__", ".git", "node_modules", "backups", "data", "temp_sync_workplace", ".ipynb_checkpoints", "memory", "logs") for p in parts):
-                    continue
-                rel = str(rel_path.as_posix())
-                stat = f.stat()
-                mtime = stat.st_mtime
-                size = stat.st_size
-                
-                # 效能優化：若 mtime 與 size 沒變，且不是 full_scan，則沿用舊的 hash
-                with _lock:
-                    old_meta = _file_metadata.get(rel)
-                
-                if not full_scan and old_meta and old_meta["mtime"] == mtime and old_meta["size"] == size:
-                    metadata[rel] = old_meta
-                else:
-                    # 只有在變動時才讀取內容 (IO 耗時操作)
-                    try:
-                        content = f.read_text("utf-8", errors="ignore")
-                        metadata[rel] = {
-                            "mtime": mtime,
-                            "size": size,
-                            "hash": _compute_hash(content)
-                        }
-                        # 歷史紀錄寫入應在鎖外準備好資料，或使用 RLock
-                        if rel not in _history_versions:
-                            _add_history(rel, content)
-                    except: continue
-        except Exception:
-            continue
+    
+    # v5.0: 掃描所有工作區 + BASE_DIR
+    scan_roots = [(str(BASE_DIR), BASE_DIR)]
+    with _lock:
+        for ws_path in _workspaces:
+            p = Path(ws_path)
+            if p.exists():
+                scan_roots.append((ws_path, p))
+    
+    for ws_name, root_path in scan_roots:
+        for f in root_path.rglob("*"):
+            try:
+                if f.is_file() and f.suffix in extensions:
+                    rel_path = f.relative_to(root_path)
+                    parts = rel_path.parts
+                    if any(p in ("__pycache__", ".git", "node_modules", "backups", "data", "temp_sync_workplace", ".ipynb_checkpoints", "memory", "logs") for p in parts):
+                        continue
+                    rel = str(rel_path.as_posix())
+                    stat = f.stat()
+                    mtime = stat.st_mtime
+                    size = stat.st_size
+                    
+                    with _lock:
+                        old_meta = _file_metadata.get(rel)
+                    
+                    if not full_scan and old_meta and old_meta["mtime"] == mtime and old_meta["size"] == size:
+                        metadata[rel] = old_meta
+                    else:
+                        try:
+                            content = f.read_text("utf-8", errors="ignore")
+                            metadata[rel] = {
+                                "mtime": mtime,
+                                "size": size,
+                                "hash": _compute_hash(content)
+                            }
+                            if rel not in _history_versions:
+                                _add_history(rel, content)
+                        except: continue
+            except Exception:
+                continue
     return metadata
 
 def _detect_changes():
@@ -338,6 +445,10 @@ class LiveCodeStudioHandler(BaseHTTPRequestHandler):
 
     def _read_file_content(self, rel_path: str) -> Optional[str]:
         try:
+            # v5.0: 優先檢查追蹤檔案（記憶體內）
+            with _lock:
+                if rel_path in _tracked_files:
+                    return _tracked_files[rel_path]["content"]
             decoded_path = urllib.parse.unquote(rel_path)
             full = (BASE_DIR / decoded_path).resolve()
             if not str(full).startswith(str(BASE_DIR.resolve())):
@@ -353,9 +464,48 @@ class LiveCodeStudioHandler(BaseHTTPRequestHandler):
         path = urllib.parse.unquote(parsed.path)
         if path == "/api/tree":
             with _lock:
-                files = sorted(_file_metadata.keys())
+                # v5.0: 雙來源 — 追蹤檔案 + 工作區檔案
+                tracked = sorted(_tracked_files.keys())
+                workspace_files = sorted([
+                    k for k in _file_metadata.keys()
+                    if k not in _tracked_files
+                ])
                 modified = dict(_modified_files)
-            self._send_json({"files": files, "modified": modified})
+                workspaces = dict(_workspaces)
+                session_info = {
+                    "active": _session_active,
+                    "workdir": _session_workdir,
+                    "started_at": _session_started_at
+                }
+            self._send_json({
+                "files": workspace_files,
+                "tracked": tracked,
+                "modified": modified,
+                "workspaces": workspaces,
+                "session": session_info
+            })
+        elif path == "/api/tracked":
+            # v5.0: 只回傳追蹤檔案清單
+            with _lock:
+                tracked = {k: {"workdir": v["workdir"], "tracked_at": v["tracked_at"]} 
+                          for k, v in _tracked_files.items()}
+            self._send_json({"tracked": tracked})
+        elif path == "/api/session/info":
+            # v5.0: session 資訊
+            with _lock:
+                info = {
+                    "active": _session_active,
+                    "workdir": _session_workdir,
+                    "started_at": _session_started_at,
+                    "tracked_count": len(_tracked_files),
+                    "workspace_count": len(_workspaces)
+                }
+            self._send_json(info)
+        elif path == "/api/workspace/list":
+            # v5.0: 工作區列表
+            with _lock:
+                ws_list = dict(_workspaces)
+            self._send_json({"workspaces": ws_list})
         elif path.startswith("/api/read/"):
             rel = path[len("/api/read/"):]
             content = self._read_file_content(rel)
@@ -398,7 +548,51 @@ class LiveCodeStudioHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Not found"}, 404)
 
     def do_POST(self):
-        if self.path == "/api/repl_logs_push":
+        # ═══ v5.0: Hermes 協作 API ═══
+        if self.path == "/api/session/start":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+            workdir = body.get("workdir", str(BASE_DIR))
+            global _session_workdir, _session_active, _session_started_at
+            _session_workdir = str(Path(workdir).resolve())
+            _session_active = True
+            _session_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            add_repl_log(f"🚀 Session 啟動: {_session_workdir}")
+            self._send_json({
+                "status": "ok",
+                "workdir": _session_workdir,
+                "started_at": _session_started_at
+            })
+        elif self.path == "/api/session/stop":
+            _session_active = False
+            add_repl_log("🛑 Session 結束")
+            self._send_json({"status": "ok", "message": "Session 已結束"})
+        elif self.path == "/api/files/track":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            rel_path = body.get("path", "")
+            content = body.get("content", "")
+            workdir = body.get("workdir", None)
+            result = _track_file(rel_path, content, workdir)
+            self._send_json(result)
+        elif self.path == "/api/files/untrack":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            rel_path = body.get("path", "")
+            result = _untrack_file(rel_path)
+            self._send_json(result)
+        elif self.path == "/api/workspace/add":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            result = _add_workspace(body.get("path", ""), body.get("name"))
+            self._send_json(result)
+        elif self.path == "/api/workspace/remove":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            result = _remove_workspace(body.get("path", ""))
+            self._send_json(result)
+        # ═══ v4.0 原有 API ═══
+        elif self.path == "/api/repl_logs_push":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
             data = json.loads(body)
@@ -543,22 +737,45 @@ class LiveCodeStudioHandler(BaseHTTPRequestHandler):
             return
         
         try:
-            import glob as _glob
-            target_dirs = ["skills/", "engines/"]
-            target_ext = ".py"
+            # v5.0: 優先掃描追蹤檔案 + 工作區 Python 檔案
             code_files = {}
-            for d in target_dirs:
+            
+            # 1. 追蹤檔案（優先）
+            with _lock:
+                for rel_path, info in _tracked_files.items():
+                    if rel_path.endswith('.py'):
+                        code_files[rel_path] = info["content"][:3000]
+            
+            # 2. 工作區 Python 檔案
+            for ws_path in _workspaces:
+                ws = Path(ws_path)
+                if ws.exists():
+                    for f in ws.rglob("*.py"):
+                        try:
+                            if "__pycache__" not in str(f):
+                                rel = str(f.relative_to(ws).as_posix())
+                                if rel not in code_files:
+                                    code_files[rel] = f.read_text("utf-8", errors="ignore")[:3000]
+                        except Exception:
+                            pass
+            
+            # 3. 向後相容：舊 BASE_DIR 的核心檔案
+            legacy_dirs = ["skills/", "engines/"]
+            for d in legacy_dirs:
                 dpath = BASE_DIR / d
                 if dpath.exists():
-                    for f in dpath.rglob(f"*{target_ext}"):
+                    for f in dpath.rglob("*.py"):
                         rel = str(f.relative_to(BASE_DIR).as_posix())
-                        if "__pycache__" not in rel:
-                            code_files[rel] = f.read_text("utf-8", errors="ignore")[:3000]
+                        if "__pycache__" not in rel and rel not in code_files:
+                            try:
+                                code_files[rel] = f.read_text("utf-8", errors="ignore")[:3000]
+                            except Exception:
+                                pass
             
             core_files = ["agent.py", "handlers.py", "memory.py", "tools.py"]
             for cf in core_files:
                 fpath = BASE_DIR / cf
-                if fpath.exists():
+                if fpath.exists() and cf not in code_files:
                     code_files[cf] = fpath.read_text("utf-8", errors="ignore")[:3000]
             
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -630,601 +847,11 @@ class LiveCodeStudioHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-HTML_TEMPLATE = r"""<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="utf-8">
-<title>Live Code Studio v4.0</title>
-<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
-<style>
-:root {
-    --lc-bg: #1e1e1e; --lc-bg-light: #252526; --lc-bg-lighter: #2d2d2d; --lc-bg-hover: #2a2d2e;
-    --lc-border: #3c3c3c; --lc-border-light: #454545; --lc-text: #d4d4d4; --lc-text-dim: #888;
-    --lc-accent: #0e639c; --lc-accent-hover: #1177bb; --lc-warn: #ff8c00; --lc-repl-bg: #000;
-    --lc-repl-text: #00ff00; --lc-splitter: #3c3c3c; --lc-splitter-hover: #555;
-    --lc-toolbar-height: 35px;
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--lc-bg); color: var(--lc-text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-
-#notification-bar { display: none; background: #8e2a00; color: #fff; padding: 0 16px; font-size: 13px; height: 35px; flex-shrink: 0; z-index: 100; border-bottom: 1px solid var(--lc-warn); align-items: center; justify-content: space-between; }
-#notification-bar.show { display: flex; }
-.notify-msg { font-weight: 500; }
-.notify-actions { display: flex; gap: 10px; }
-.notify-actions button { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5); color: #fff; padding: 2px 8px; cursor: pointer; border-radius: 3px; font-size: 11px; }
-.notify-actions button:hover { background: rgba(255,255,255,0.4); }
-
-#main { display: flex; flex: 1; overflow: hidden; position: relative; }
-#sidebar { width: 260px; min-width: 160px; max-width: 500px; background: var(--lc-bg-light); border-right: 1px solid var(--lc-border); display: flex; flex-direction: column; overflow-x: hidden; flex-shrink: 0; }
-#sidebar.collapsed { display: none; }
-.splitter-v { width: 5px; min-width: 5px; background: var(--lc-splitter); cursor: col-resize; flex-shrink: 0; transition: background 0.15s; position: relative; z-index: 10; }
-.splitter-v:hover, .splitter-v.active { background: var(--lc-accent); }
-.splitter-v::after { content: ''; position: absolute; top: 0; left: -2px; right: -2px; bottom: 0; }
-.splitter-h { height: 5px; min-height: 5px; background: var(--lc-splitter); cursor: row-resize; flex-shrink: 0; transition: background 0.15s; }
-.splitter-h:hover, .splitter-h.active { background: var(--lc-accent); }
-#sidebar-toggle { width: 26px; background: var(--lc-bg-lighter); cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; user-select: none; border-right: 1px solid var(--lc-border); color: var(--lc-text-dim); font-size: 12px; }
-#sidebar-toggle:hover { background: var(--lc-splitter-hover); color: #fff; }
-#sidebar-header { padding: 10px 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; background: var(--lc-bg-lighter); }
-#sidebar-header span { font-weight: bold; font-size: 11px; color: #aaa; letter-spacing: 1px; text-transform: uppercase; }
-#sidebar-header .actions { display: flex; gap: 8px; }
-#sidebar-header button { background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; }
-#sidebar-header button:hover { color: #fff; }
-
-#file-tree { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 5px 0; }
-.tree-item { display: flex; align-items: center; padding: 4px 8px; cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 3px; margin: 1px 5px; }
-.tree-item:hover { background: #2a2d2e; }
-.tree-item.active { background: #37373d; color: #fff; }
-.tree-item.folder::before { content: '📁'; margin-right: 6px; font-size: 12px; }
-.tree-item.folder.open::before { content: '📂'; }
-.tree-item.file::before { content: '📄'; margin-right: 6px; font-size: 12px; }
-.exclamation { color: #ff8c00; margin-left: auto; font-weight: bold; font-size: 14px; }
-
-#editor-container { flex: 1; display: flex; flex-direction: column; background: var(--lc-bg); position: relative; min-width: 200px; }
-
-#repl-panel { width: 400px; min-width: 200px; max-width: 700px; background: var(--lc-repl-bg); border-left: 1px solid #333; display: flex; flex-direction: column; font-family: 'Consolas', monospace; flex-shrink: 0; }
-#repl-panel.collapsed { display: none; }
-#repl-header { background: #1a1a1a; padding: 5px 10px; font-size: 12px; color: var(--lc-repl-text); display: flex; justify-content: space-between; border-bottom: 1px solid #333; cursor: pointer; user-select: none; }
-#repl-header:hover { background: #222; }
-#repl-header .repl-actions { display: flex; gap: 8px; align-items: center; }
-#repl-header .repl-actions button { background: none; border: none; color: var(--lc-repl-text); cursor: pointer; font-size: 12px; padding: 2px 6px; }
-#repl-header .repl-actions button:hover { background: #333; border-radius: 2px; }
-#repl-content { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; color: var(--lc-repl-text); white-space: pre-wrap; }
-
-#editor-toolbar { height: 35px; background: var(--lc-bg-lighter); border-bottom: 1px solid var(--lc-border); display: flex; align-items: center; padding: 0 8px; gap: 6px; }
-.tool-btn { background: #3e3e42; border: 1px solid var(--lc-border-light); color: #ccc; padding: 4px 10px; cursor: pointer; font-size: 11px; border-radius: 3px; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.tool-btn:hover { background: #4e4e52; color: #fff; }
-.tool-btn.primary { background: var(--lc-accent); border-color: var(--lc-accent-hover); color: #fff; }
-.tool-btn.primary:hover { background: var(--lc-accent-hover); }
-.tool-btn.icon-only { padding: 4px 6px; font-size: 14px; border: none; background: transparent; }
-.tool-btn.icon-only:hover { background: #3e3e42; }
-
-#bell-btn { position: relative; margin-left: auto; cursor: pointer; font-size: 18px; color: #aaa; padding: 5px; }
-#bell-btn:hover { color: #fff; }
-#bell-badge { position: absolute; top: 2px; right: 2px; background: #f44336; color: white; border-radius: 50%; padding: 2px 5px; font-size: 9px; display: none; }
-
-#notification-panel { display: none; position: absolute; top: 40px; right: 10px; width: 300px; max-height: 400px; background: #252526; border: 1px solid #454545; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 200; flex-direction: column; border-radius: 4px; }
-#notification-panel.show { display: flex; }
-#notification-panel-header { padding: 10px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: bold; }
-#notification-panel-list { flex: 1; overflow-y: auto; padding: 5px 0; }
-.notify-item { padding: 8px 12px; font-size: 12px; border-bottom: 1px solid #2d2d2d; display: flex; justify-content: space-between; align-items: center; }
-.notify-item:hover { background: #2a2d2e; }
-.notify-item .path { color: #ff8c00; cursor: pointer; text-decoration: underline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
-
-#editor-area { flex: 1; }
-
-#diff-panel { display: none; position: absolute; top: 35px; left: 0; right: 0; bottom: 0; background: var(--lc-bg); z-index: 150; flex-direction: column; }
-#diff-panel.show { display: flex; }
-#diff-header { padding: 8px 15px; background: #333; font-size: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; flex-shrink: 0; }
-#diff-editor { flex: 1; }
-
-#status-bar { height: 22px; background: var(--lc-accent); color: #fff; font-size: 11px; display: flex; align-items: center; padding: 0 12px; justify-content: space-between; flex-shrink: 0; }
-#status-bar span { white-space: nowrap; }
-
-#history-selector { background: #3e3e42; color: #fff; border: 1px solid #555; font-size: 11px; padding: 2px 5px; border-radius: 2px; outline: none; }
-
-</style>
-</head>
-<body>
-<div id="notification-bar">
-    <div class="notify-msg" id="notify-text">📢 偵測到外部變更</div>
-    <div class="notify-actions">
-        <button onclick="viewDiff()">📊 檢視差異</button>
-        <button onclick="reloadFile()">🔄 重新載入</button>
-        <button onclick="hideNotification()">✕ 關閉</button>
-    </div>
-</div>
-<div id="main">
-    <div id="sidebar">
-        <div id="sidebar-header">
-            <span>EXPLORER</span>
-            <div class="actions">
-                <button onclick="refreshTree()" title="重新整理">🔄</button>
-            </div>
-        </div>
-        <div id="file-tree"></div>
-    </div>
-    <div id="sidebar-toggle" onclick="toggleSidebar()" title="切換側邊欄">◀</div>
-    <div class="splitter-v" id="splitter-sidebar"></div>
-    <div id="editor-container">
-        <div id="editor-toolbar">
-            <button class="tool-btn primary" onclick="saveFile()">💾 儲存</button>
-            <button class="tool-btn" onclick="viewDiff()">🔍 比較</button>
-            <button class="tool-btn" onclick="runSelfReview()" style="background:#2d5a27;border-color:#3a7a33;">🩺 自我診斷</button>
-            <button class="tool-btn" onclick="toggleRepl()" id="repl-toolbar-btn" style="background:#1a3a5c;border-color:#2a5a8c;" title="切換 REPL 終端">📟 REPL</button>
-            <span id="current-file-name" style="font-size:12px; color:var(--lc-text-dim); margin-left:6px;">尚未選擇檔案</span>
-            <div id="bell-btn" onclick="toggleNotificationPanel()" title="異動通知" style="margin-left:auto;">
-                🔔<span id="bell-badge">0</span>
-            </div>
-        </div>
-        <div id="editor-area"></div>
-        <div id="notification-panel">
-            <div id="notification-panel-header">
-                <span>🔔 異動通知中心</span>
-                <button class="tool-btn" style="padding: 2px 6px;" onclick="clearAllNotifications()">全部清除</button>
-            </div>
-            <div id="notification-panel-list"></div>
-        </div>
-        <div id="diff-panel">
-            <div id="diff-header">
-                <div>
-                    <span>📊 差異比對 (左: </span>
-                    <select id="history-selector" onchange="changeHistoryVersion()"></select>
-                    <span> | 右: 磁碟現狀 - <b style="color:#4caf50">可編輯</b>)</span>
-                </div>
-                <button style="background:none; border:none; color:#aaa; cursor:pointer; font-size:16px;" onclick="closeDiff()">✕</button>
-            </div>
-            <div id="diff-editor"></div>
-        </div>
-    </div>
-    <div class="splitter-v" id="splitter-repl"></div>
-    <div id="repl-panel">
-        <div id="repl-header" onclick="toggleRepl()" title="點擊收合/展開">
-            <span>📟 CODEWHALE REPL TERMINAL</span>
-            <div class="repl-actions">
-                <span id="repl-status" style="font-size:10px;">● ONLINE</span>
-                <button onclick="event.stopPropagation(); toggleRepl()" title="收合面板">▼</button>
-            </div>
-        </div>
-        <div id="repl-content"></div>
-    </div>
-</div>
-<div id="status-bar">
-    <span id="status-text">準備就緒</span>
-    <span id="file-info">Live Code Studio v4.1</span>
-</div>
-
-<script>
-let editor, diffEditor, currentFile = null, modifiedFiles = {}, fileHistory = [];
-let treeData = {};
-let splitterState = null;
-
-function initSplitters() {
-    const sidebar = document.getElementById('sidebar');
-    const repl = document.getElementById('repl-panel');
-    const splitterS = document.getElementById('splitter-sidebar');
-    const splitterR = document.getElementById('splitter-repl');
-    
-    function makeDraggable(splitter, getEl, storageKey, minW, maxW) {
-        splitter.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            const el = getEl();
-            splitterState = { el, startX: e.clientX, startW: el.offsetWidth, minW, maxW, storageKey };
-            splitter.classList.add('active');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-        });
-    }
-    
-    makeDraggable(splitterS, () => sidebar, 'lc_sidebar_width', 160, 500);
-    makeDraggable(splitterR, () => repl, 'lc_repl_width', 200, 700);
-}
-
-document.addEventListener('mousemove', (e) => {
-    if (!splitterState) return;
-    const { el, startX, startW, minW, maxW, storageKey } = splitterState;
-    const newW = Math.max(minW, Math.min(maxW, startW + (e.clientX - startX)));
-    el.style.width = newW + 'px';
-    if (editor) editor.layout();
-    if (diffEditor) diffEditor.layout();
-});
-
-document.addEventListener('mouseup', () => {
-    if (!splitterState) return;
-    localStorage.setItem(splitterState.storageKey, splitterState.el.offsetWidth);
-    document.getElementById('splitter-sidebar').classList.remove('active');
-    document.getElementById('splitter-repl').classList.remove('active');
-    splitterState = null;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-});
-
-function restoreLayout() {
-    const sw = localStorage.getItem('lc_sidebar_width');
-    const rw = localStorage.getItem('lc_repl_width');
-    if (sw) document.getElementById('sidebar').style.width = sw + 'px';
-    if (rw) document.getElementById('repl-panel').style.width = rw + 'px';
-}
-
-function toggleRepl() {
-    const panel = document.getElementById('repl-panel');
-    const splitter = document.getElementById('splitter-repl');
-    const btn = document.getElementById('repl-toolbar-btn');
-    if (panel.classList.contains('collapsed')) {
-        panel.classList.remove('collapsed');
-        panel.style.width = (localStorage.getItem('lc_repl_width') || '400') + 'px';
-        splitter.style.display = '';
-        if (btn) btn.style.background = '#1a3a5c';
-    } else {
-        localStorage.setItem('lc_repl_width', panel.offsetWidth);
-        panel.classList.add('collapsed');
-        splitter.style.display = 'none';
-        if (btn) btn.style.background = '#3a1a1a';
-    }
-    setTimeout(() => { if (editor) editor.layout(); }, 300);
-}
-
-require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
-require(['vs/editor/editor.main'], function() {
-    editor = monaco.editor.create(document.getElementById('editor-area'), {
-        value: '', language: 'python', theme: 'vs-dark', automaticLayout: true,
-        fontSize: 14, minimap: { enabled: true }, scrollBeyondLastLine: false
-    });
-    
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveFile);
-    
-    diffEditor = monaco.editor.createDiffEditor(document.getElementById('diff-editor'), {
-        theme: 'vs-dark', automaticLayout: true, readOnly: false, renderSideBySide: true
-    });
-    
-    diffEditor.getModifiedEditor().onDidChangeModelContent(() => {
-        if (diffEditor.getModel()) {
-            const val = diffEditor.getModifiedEditor().getValue();
-            editor.setValue(val);
-        }
-    });
-
-    refreshTree();
-    setInterval(refreshTree, 5000);
-    setInterval(refreshReplLogs, 2000);
-    initSplitters();
-    restoreLayout();
-});
-
-async function refreshReplLogs() {
-    try {
-        const res = await fetch('/api/repl_logs');
-        const data = await res.json();
-        const content = document.getElementById('repl-content');
-        const isAtBottom = content.scrollHeight - content.scrollTop <= content.clientHeight + 50;
-        if (data.logs.length > 0) {
-            content.innerHTML = data.logs.join('<br>');
-        }
-        if (isAtBottom) content.scrollTop = content.scrollHeight;
-    } catch (e) {}
-}
-
-let _retryCount = 0;
-async function refreshTree() {
-    try {
-        const res = await fetch('/api/tree');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        modifiedFiles = data.modified;
-        renderTree(data.files);
-        updateNotificationUI();
-        if (currentFile && modifiedFiles[currentFile]) showNotification(currentFile);
-        _retryCount = 0;
-        document.getElementById('status-text').textContent = '🟢 連線正常';
-    } catch (e) {
-        _retryCount++;
-        if (_retryCount <= 5) {
-            document.getElementById('status-text').textContent = '🔄 重連中 (' + _retryCount + '/5)...';
-        } else {
-            document.getElementById('status-text').textContent = '❌ 失去連線';
-        }
-    }
-}
-
-function updateNotificationUI() {
-    const count = Object.keys(modifiedFiles).length;
-    const badge = document.getElementById('bell-badge');
-    badge.textContent = count;
-    badge.style.display = count > 0 ? 'block' : 'none';
-
-    const list = document.getElementById('notification-panel-list');
-    if (count === 0) {
-        list.innerHTML = '<div style="padding:20px; text-align:center; color:#666; font-size:12px;">暫無異動通知</div>';
-        return;
-    }
-    list.innerHTML = Object.entries(modifiedFiles).map(([path]) => `
-        <div class="notify-item">
-            <span class="path" onclick="openAndDiff('${path}')" title="${path}">${path}</span>
-            <button class="tool-btn" style="padding:2px 5px;" onclick="clearNotify('${path}')">忽略</button>
-        </div>
-    `).join('');
-}
-
-function toggleNotificationPanel() {
-    document.getElementById('notification-panel').classList.toggle('show');
-}
-
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const toggle = document.getElementById('sidebar-toggle');
-    const splitter = document.getElementById('splitter-sidebar');
-    if (sidebar.classList.contains('collapsed')) {
-        sidebar.classList.remove('collapsed');
-        sidebar.style.width = (localStorage.getItem('lc_sidebar_width') || '260') + 'px';
-        splitter.style.display = '';
-        toggle.innerHTML = '◀';
-    } else {
-        localStorage.setItem('lc_sidebar_width', sidebar.offsetWidth);
-        sidebar.classList.add('collapsed');
-        splitter.style.display = 'none';
-        toggle.innerHTML = '▶';
-    }
-    setTimeout(() => { if (editor) editor.layout(); if (diffEditor) diffEditor.layout(); }, 300);
-}
-
-async function clearNotify(path) {
-    await fetch('/api/clear_notify/' + encodeURIComponent(path));
-    refreshTree();
-}
-
-async function clearAllNotifications() {
-    await fetch('/api/clear_notify/all');
-    refreshTree();
-    document.getElementById('notification-panel').classList.remove('show');
-}
-
-function openAndDiff(path) {
-    openFile(path).then(() => {
-        viewDiff();
-        document.getElementById('notification-panel').classList.remove('show');
-    });
-}
-
-function renderTree(files) {
-    const treeRoot = document.getElementById('file-tree');
-    const oldScroll = treeRoot.scrollTop;
-    const root = {};
-    files.forEach(path => {
-        const parts = path.split('/');
-        let current = root;
-        parts.forEach((part, i) => {
-            if (i === parts.length - 1) current[part] = { __file: path };
-            else { if (!current[part]) current[part] = {}; current = current[part]; }
-        });
-    });
-
-    const buildHTML = (obj, level = 0) => {
-        let html = '';
-        const keys = Object.keys(obj).sort((a, b) => {
-            const aIsFile = !!obj[a].__file;
-            const bIsFile = !!obj[b].__file;
-            if (aIsFile !== bIsFile) return aIsFile ? 1 : -1;
-            return a.localeCompare(b);
-        });
-        keys.forEach(key => {
-            const isFile = !!obj[key].__file;
-            const fullPath = isFile ? obj[key].__file : '';
-            const isModified = isFile && modifiedFiles[fullPath];
-            const isActive = fullPath === currentFile;
-            if (isFile) {
-                html += `<div class="tree-item file ${isActive ? 'active' : ''}" style="padding-left: ${level * 15 + 10}px" onclick="openFile('${fullPath}')">
-                    ${key} ${isModified ? '<span class="exclamation">❗</span>' : ''}
-                </div>`;
-            } else {
-                const folderId = `folder-${level}-${key}`;
-                const isOpen = treeData[folderId] === true;
-                html += `<div class="tree-item folder ${isOpen ? 'open' : ''}" style="padding-left: ${level * 15 + 10}px" onclick="toggleFolder('${folderId}')">${key}</div>`;
-                html += `<div id="${folderId}" style="display: ${isOpen ? 'block' : 'none'}">${buildHTML(obj[key], level + 1)}</div>`;
-            }
-        });
-        return html;
-    };
-    treeRoot.innerHTML = buildHTML(root);
-    treeRoot.scrollTop = oldScroll;
-}
-
-function toggleFolder(id) {
-    const el = document.getElementById(id);
-    const item = el.previousElementSibling;
-    if (el.style.display === 'none') { el.style.display = 'block'; item.classList.add('open'); treeData[id] = true; }
-    else { el.style.display = 'none'; item.classList.remove('open'); treeData[id] = false; }
-}
-
-async function openFile(path) {
-    currentFile = path;
-    document.getElementById('current-file-name').textContent = path;
-    try {
-        const res = await fetch('/api/read/' + encodeURIComponent(path));
-        const data = await res.json();
-        editor.setValue(data.content);
-        fileHistory = data.history || [];
-
-        const ext = path.split('.').pop();
-        let lang = 'plaintext';
-        if (ext === 'py') lang = 'python';
-        else if (ext === 'json') lang = 'json';
-        else if (ext === 'js') lang = 'javascript';
-        else if (ext === 'html') lang = 'html';
-        monaco.editor.setModelLanguage(editor.getModel(), lang);
-        document.getElementById('status-text').textContent = '📄 ' + path;
-        hideNotification();
-        closeDiff();
-        fetch('/api/clear_notify/' + encodeURIComponent(path));
-        refreshTree();
-    } catch (e) { document.getElementById('status-text').textContent = '❌ 讀取失敗'; }
-}
-
-async function saveFile() {
-    if (!currentFile) return;
-    const content = editor.getValue();
-    try {
-        const res = await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentFile, content: content })
-        });
-        if (res.ok) {
-            document.getElementById('status-text').textContent = '✅ 已儲存';
-            hideNotification();
-            refreshTree();
-        }
-    } catch (e) { alert('儲存失敗'); }
-}
-
-function showNotification(f) {
-    document.getElementById('notify-text').textContent = `📢 檔案 "${f}" 在磁碟上已更新！`;
-    document.getElementById('notification-bar').classList.add('show');
-}
-function hideNotification() { document.getElementById('notification-bar').classList.remove('show'); }
-
-async function viewDiff() {
-    const diffPanel = document.getElementById('diff-panel');
-    if (diffPanel.classList.contains('show')) { closeDiff(); return; }
-    if (!currentFile) return;
-    try {
-        const res = await fetch('/api/diff/' + encodeURIComponent(currentFile));
-        const data = await res.json();
-        fileHistory = data.history || [];
-        
-        const selector = document.getElementById('history-selector');
-        selector.innerHTML = fileHistory.map((v, i) => 
-            `<option value="${i}" ${i === 0 ? 'selected' : ''}>歷史版本 ${v.timestamp}${i === 0 ? ' (初始)' : ''}</option>`
-        ).join('');
-        
-        updateDiffEditor(0, data.disk_content);
-        
-        diffPanel.classList.add('show');
-        document.getElementById('status-text').textContent = '📊 正在檢視差異 (右側可編輯)';
-        setTimeout(() => { diffEditor.layout(); }, 50);
-    } catch (e) {
-        console.error(e);
-        alert('無法獲取差異數據');
-    }
-}
-
-function changeHistoryVersion() {
-    const index = document.getElementById('history-selector').value;
-    const diskContent = editor.getValue(); // 這裡用當前編輯器的內容作為右側
-    updateDiffEditor(index, diskContent);
-}
-
-function updateDiffEditor(historyIndex, diskContent) {
-    const ext = currentFile.split('.').pop();
-    let lang = 'python';
-    if (ext === 'js') lang = 'javascript';
-    else if (ext === 'json') lang = 'json';
-    else if (ext === 'html') lang = 'html';
-
-    const baseContent = fileHistory[historyIndex] ? fileHistory[historyIndex].content : diskContent;
-    const originalModel = monaco.editor.createModel(baseContent, lang);
-    const modifiedModel = monaco.editor.createModel(diskContent, lang);
-    
-    diffEditor.setModel({
-        original: originalModel,
-        modified: modifiedModel
-    });
-}
-
-function closeDiff() { 
-    document.getElementById('diff-panel').classList.remove('show'); 
-    if (editor) editor.layout();
-}
-function reloadFile() { if(currentFile) openFile(currentFile); }
-
-async function runSelfReview() {
-    document.getElementById('status-text').textContent = '🩺 正在自我診斷...';
-    try {
-        const res = await fetch('/api/self_review', { method: 'POST' });
-        const data = await res.json();
-        if (data.error) {
-            alert('診斷失敗: ' + data.error);
-            document.getElementById('status-text').textContent = '❌ 診斷失敗';
-            return;
-        }
-        const total = data.total || 0;
-        const high = data.high || [];
-        const medium = data.medium || [];
-        const low = data.low || [];
-        let report = '';
-        // Phase 0: .alice/ 自檢摘要
-        if (data.phase0) {
-            const p0 = data.phase0;
-            report += '📋 Phase 0：「讀資訊、看進度、懂需求」.alice/ 自檢\\n';
-            report += '─'.repeat(50) + '\\n';
-            report += '📌 讀資訊 (FACTS.md): ' + (p0.summary.facts_loaded ? '✅ 已載入' : '❌ 未找到') + '\\n';
-            if (p0.summary.boundary_checks && p0.summary.boundary_checks.length > 0) {
-                p0.summary.boundary_checks.forEach(c => report += '   ' + c + '\\n');
-            }
-            report += '📌 看進度 (TASK_BOARD.md): ' + (p0.summary.taskboard_loaded ? '✅ 已載入' : '❌ 未找到') + '\\n';
-            if (p0.summary.tasks_in_progress !== undefined) {
-                report += '   🔧 進行中: ' + p0.summary.tasks_in_progress + ' 項 | ⬜ 待開發: ' + p0.summary.tasks_pending + ' 項\\n';
-            }
-            report += '📌 懂需求 (LOG.md): ' + (p0.summary.log_loaded ? '✅ 已載入' : '❌ 未找到') + '\\n';
-            if (p0.summary.recent_log_entries && p0.summary.recent_log_entries.length > 0) {
-                report += '   近期變更:\\n';
-                p0.summary.recent_log_entries.forEach(e => report += '   📝 ' + e + '\\n');
-            }
-            if (p0.issues && p0.issues.length > 0) {
-                report += '\\n⚠️ .alice/ 問題:\\n';
-                p0.issues.forEach(i => report += '   🟡 [' + i.file + '] ' + i.description + '\\n      → ' + i.suggestion + '\\n');
-            }
-            report += '\\n';
-        }
-        report += `🩺 自我診斷報告（掃描 ${data.files_scanned || '?'} 檔案，發現 ${total} 個問題）\\n\\n`;
-        if (high.length > 0) {
-            report += `🔴 高優先 (${high.length})\\n`;
-            high.forEach((h, i) => report += `  ${i+1}. [${h.file}] ${h.description}\\n     → ${h.suggestion}\\n`);
-            report += '\\n';
-        }
-        if (medium.length > 0) {
-            report += `🟡 中優先 (${medium.length})\\n`;
-            medium.forEach((m, i) => report += `  ${i+1}. [${m.file}] ${m.description}\\n     → ${m.suggestion}\\n`);
-            report += '\\n';
-        }
-        if (low.length > 0) {
-            report += `🟢 低優先 (${low.length})\\n`;
-            low.forEach((l, i) => report += `  ${i+1}. [${l.file}] ${l.description}\\n     → ${l.suggestion}\\n`);
-            report += '\\n';
-        }
-        // Phase 4: 需求備忘錄
-        if (data.phase4) {
-            const p4 = data.phase4;
-            report += '\\n📋 Phase 4：需求備忘錄（REQUIREMENTS.md）\\n';
-            report += '─'.repeat(50) + '\\n';
-            if (p4.summary.requirements_loaded) {
-                report += '📌 核心需求清單:\\n';
-                if (p4.summary.core_requirements && p4.summary.core_requirements.length > 0) {
-                    p4.summary.core_requirements.forEach(r => report += `   ${r}\\n`);
-                } else {
-                    report += '   (無核心需求條目)\\n';
-                }
-            } else {
-                report += '⚠️ REQUIREMENTS.md 不存在，請建立需求備忘錄\\n';
-            }
-            if (p4.issues && p4.issues.length > 0) {
-                report += '\\n⚠️ Phase 4 問題:\\n';
-                p4.issues.forEach(i => report += `   🟡 [${i.file}] ${i.description}\\n      → ${i.suggestion}\\n`);
-            }
-            report += '\\n';
-        }
-        if (total === 0 && (!data.phase4 || !data.phase4.issues || data.phase4.issues.length === 0)) report += '✅ 未發現明顯問題，系統健康！';
-        editor.setValue(report);
-        monaco.editor.setModelLanguage(editor.getModel(), 'plaintext');
-        document.getElementById('current-file-name').textContent = '🩺 自我診斷報告';
-        const p4Count = (data.phase4 && data.phase4.issues) ? data.phase4.issues.length : 0;
-        document.getElementById('status-text').textContent = `✅ 診斷完成：${total} 個問題（🔴${high.length} 🟡${medium.length} 🟢${low.length}）+ Phase4 ${p4Count} 項`;
-    } catch (e) {
-        alert('診斷請求失敗: ' + e.message);
-        document.getElementById('status-text').textContent = '❌ 診斷請求失敗';
-    }
-}
-</script>
-</body>
-</html>"""
+HTML_TEMPLATE_PATH = Path(__file__).parent / "lcs_template_v5.html"
+if HTML_TEMPLATE_PATH.exists():
+    HTML_TEMPLATE = HTML_TEMPLATE_PATH.read_text("utf-8")
+else:
+    HTML_TEMPLATE = """<!DOCTYPE html><html><body><h1>LCS v5.0 — 模板遺失，請建立 lcs_template_v5.html</h1></body></html>"""
 
 def _start_server(force=False):
     global _server_instance, _server_thread
