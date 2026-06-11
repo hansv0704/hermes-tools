@@ -109,9 +109,10 @@ python "%~dp0scripts\sync_memory_github.py" push
 echo [OK] 記憶已同步到 GitHub
 echo.
 
-:: === 設定預設 profile ===
-hermes profile use alice >nul 2>nul
-echo [OK] 已設 Alice 為預設 profile
+:: === 設定預設 profile（用 default 避免 Windows 桌面版 os.execvpe Segfault）===
+hermes profile use default >nul 2>nul
+echo [OK] 已設 default 為預設 profile（避開桌面版相容問題）
+echo [!] 桌面版打開後請在左上角手動切換到 alice profile
 echo.
 
 :: === 設定 Telegram config ===
@@ -126,7 +127,8 @@ echo   ^|            [OK] 安裝完成！                 ^|
 echo   +===========================================+
 echo   ^|                                           ^|
 echo   ^|  直接打開桌面版 Hermes 即可                 ^|
-echo   ^|  已自動設為 Alice profile                  ^|
+echo   ^|  進入後點左上角切換到 alice profile         ^|
+echo   ^|  （所有設定、記憶、工作階段都在 alice）     ^|
 echo   ^|                                           ^|
 echo   ^|  打開後第一句話：                           ^|
 echo   ^|  「幫我建立記憶同步 cron」                  ^|
