@@ -3,10 +3,10 @@ chcp 65001 >nul
 setlocal
 
 echo.
-echo ╔══════════════════════════════════════════╗
-echo ║     Hermes 安全更新工具 v1.0            ║
-echo ║     (CLI 直更新，避開桌面版 Bug)        ║
-echo ╚══════════════════════════════════════════╝
+echo ============================================
+echo     安全更新工具 v1.0
+echo     (CLI 直更新，避開桌面版 Bug)
+echo ============================================
 echo.
 
 set "INSTALL_ROOT=%LOCALAPPDATA%\hermes\hermes-agent"
@@ -56,9 +56,9 @@ echo [3/3] 重建桌面版...
 "%HERMES_CLI%" desktop --build-only
 echo.
 
-echo ╔══════════════════════════════════════════╗
-echo ║         更新完成！                      ║
-echo ╚══════════════════════════════════════════╝
+echo ============================================
+echo          更新完成！
+echo ============================================
 echo.
 echo 桌面版路徑: %INSTALL_ROOT%\apps\desktop\release\win-unpacked\Hermes.exe
 echo.

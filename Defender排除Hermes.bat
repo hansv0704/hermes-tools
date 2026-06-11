@@ -3,9 +3,9 @@ chcp 65001 >nul
 title Hermes Windows Defender 排除設定
 
 echo.
-echo ╔══════════════════════════════════════════╗
-echo ║  Hermes Defender 排除設定 v1.0         ║
-echo ╚══════════════════════════════════════════╝
+echo ============================================
+echo   Hermes Defender 排除設定 v1.0
+echo ============================================
 echo.
 echo 此工具會將 Hermes 目錄加入 Windows Defender
 echo 排除清單，避免更新時 Python 程序被誤判為
@@ -43,8 +43,8 @@ echo.
 powershell -Command "Get-MpPreference | Select-Object ExclusionPath, ExclusionProcess | Format-List"
 echo.
 
-echo ╔══════════════════════════════════════════╗
-echo ║         設定完成！                      ║
-echo ╚══════════════════════════════════════════╝
+echo ============================================
+echo          設定完成！
+echo ============================================
 echo.
 pause
