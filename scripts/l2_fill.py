@@ -87,25 +87,19 @@ def fill_reports(count=2, submit=True):
         page.goto(L2_LIST, wait_until="networkidle")
         page.wait_for_timeout(2000)
         
-        # 找表格所有列，檢查填寫時間欄位
+        # 找表格所有列，檢查填寫時間欄位（第7欄，index 6）
         report_ids = []
         rows = page.locator('table tr').all()
         for row in rows:
             cells = row.locator('td').all()
-            if len(cells) < 3:
+            if len(cells) < 7:
                 continue
-            # 檢查是否有回報按鈕 + 填寫時間為空
+            # 檢查是否有回報按鈕
             btn = row.locator('a:has-text("回報")')
             if btn.count() == 0:
                 continue
-            # 填寫時間通常在倒數第3-4欄，檢查內容
-            fill_time = ''
-            for cell in cells[-5:]:
-                text = cell.inner_text().strip()
-                if text == '' or text == '--' or '/' in text and len(text) < 20:
-                    fill_time = text
-                    break
-            # 填寫時間為空 → 需要填寫
+            # 填寫時間在 cells[6]，空值表示未填寫
+            fill_time = cells[6].inner_text().strip()
             if fill_time == '':
                 href = btn.first.get_attribute('href')
                 if href and 'ReportID=' in href:
