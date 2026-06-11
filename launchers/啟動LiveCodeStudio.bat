@@ -1,6 +1,6 @@
 @echo off
 title Live Code Studio v5.0
-cd /d "C:\Users\hans\Desktop\Alice_Brain_Arch_20260506_031953"
+cd /d "%~dp0.."
 
 echo.
 echo ╔════════════════════════════════════════╗
@@ -27,9 +27,9 @@ REM 使用 pythonw 背景啟動（無 CMD 視窗）
 REM 若 pythonw 不可用，fallback 到 start /min python
 where pythonw >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    start "" pythonw run_studio.py --daemon
+    start "" pythonw "%~dp0..\apps\run_studio.py" --daemon
 ) else (
-    start "" /min python run_studio.py
+    start "" /min python "%~dp0..\apps\run_studio.py"
 )
 
 REM 等待啟動完成
@@ -42,7 +42,7 @@ if %ERRORLEVEL% EQU 0 (
     echo 🌐 http://localhost:5001
     start http://localhost:5001
 ) else (
-    echo ❌ 啟動失敗，請檢查 run_studio.py
+    echo ❌ 啟動失敗，請檢查 apps\run_studio.py
 )
 
 echo.

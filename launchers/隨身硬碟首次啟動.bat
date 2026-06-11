@@ -8,7 +8,7 @@ chcp 65001 >nul
 title Alice 首次環境配置
 color 0B
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo =================================================
 echo    Alice 隨身硬碟首次啟動
@@ -127,7 +127,7 @@ echo.
 
 :: ── 完整環境檢查 ──
 echo [5/5] 執行完整環境檢查...
-python setup_check.py --no-install
+python legacy\setup_check.py --no-install
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ⚠️ 部分非關鍵項目未通過，但 Alice 仍可嘗試啟動。
@@ -146,7 +146,7 @@ echo ║  按 Ctrl+C 可安全停止 Alice         ║
 echo ║  停止後會自動回到此畫面              ║
 echo ╚══════════════════════════════════════╝
 echo.
-python main.py
+python legacy\main.py
 set ALICE_EXIT=%ERRORLEVEL%
 
 echo.
