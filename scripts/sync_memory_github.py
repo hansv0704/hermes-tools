@@ -107,8 +107,8 @@ def push():
     if not any_changed:
         return True  # 安靜
 
-    # 2. git commit + push（全倉庫同步）
-    try:
+    # 2. git commit + push（全倉庫同步，push 被拒時 rebase 重試）
+    def try_push():
         subprocess.run(["git", "add", "-A"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m",
@@ -116,10 +116,20 @@ def push():
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "push"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
+
+    try:
+        try_push()
         print("[OK] 已推送到 GitHub")
-    except subprocess.CalledProcessError as e:
-        print(f"[X] Git 失敗: {e.stderr.decode() if e.stderr else e}")
-        return False
+    except subprocess.CalledProcessError:
+        # push 被拒 → rebase 重試
+        try:
+            subprocess.run(["git", "pull", "--rebase"],
+                           cwd=str(REPO_DIR), capture_output=True, timeout=30)
+            try_push()
+            print("[OK] 已推送到 GitHub (rebase)")
+        except subprocess.CalledProcessError as e:
+            print(f"[X] Git 失敗: {e.stderr.decode() if e.stderr else e}")
+            return False
     except subprocess.TimeoutExpired:
         print("[X] Git push 逾時")
         return False
