@@ -14,7 +14,7 @@ USERPROFILE = Path(os.environ["USERPROFILE"])
 LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", USERPROFILE / "AppData" / "Local"))
 
 MEMORY_FILE = LOCALAPPDATA / "hermes" / "profiles" / "alice" / "memories" / "MEMORY.md"
-CHAR_LIMIT = 4500
+CHAR_LIMIT = 3500
 THRESHOLD = 0.8
 
 _raw_ws = os.environ.get("HERMES_WORKSPACE", "")
