@@ -88,6 +88,27 @@ def _add_history(rel_path: str, content: str):
 
 # ═══ v5.0: 工作區與追蹤檔案輔助函式 ═══
 
+# v5.3: 持久化工作區設定
+WORKSPACE_CONFIG = Path(__file__).parent / "lcs_workspaces.json"
+
+def _load_workspaces() -> dict:
+    """從磁碟載入持久化的工作區清單"""
+    if WORKSPACE_CONFIG.exists():
+        try:
+            return json.loads(WORKSPACE_CONFIG.read_text("utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def _save_workspaces():
+    """將當前工作區清單寫入磁碟"""
+    try:
+        with _lock:
+            data = dict(_workspaces)
+        WORKSPACE_CONFIG.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+    except Exception:
+        pass
+
 def _add_workspace(abs_path: str, name: str = None) -> dict:
     """新增監控工作區"""
     p = Path(abs_path).resolve()
@@ -102,8 +123,8 @@ def _add_workspace(abs_path: str, name: str = None) -> dict:
             "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "file_count": 0
         }
-        # 掃描工作區檔案
         _workspaces[ws_path]["file_count"] = _scan_workspace_files(ws_path)
+    _save_workspaces()
     add_repl_log(f"📂 工作區已新增: {_workspaces[ws_path]['name']} ({ws_path})")
     return {"status": "ok", "path": ws_path, "name": _workspaces[ws_path]["name"]}
 
@@ -114,14 +135,17 @@ def _remove_workspace(abs_path: str) -> dict:
         if p in _workspaces:
             name = _workspaces[p]["name"]
             del _workspaces[p]
+            _save_workspaces()
             add_repl_log(f"📂 工作區已移除: {name}")
             return {"status": "ok", "message": f"已移除: {name}"}
     return {"status": "error", "message": "工作區不存在"}
 
 def _scan_workspace_files(abs_path: str) -> int:
-    """掃描工作區檔案並加入 _file_metadata"""
+    """掃描工作區檔案並加入 _file_metadata，自動標記近期修改的檔案"""
     extensions = {".py", ".txt", ".json", ".env", ".md", ".bat", ".yaml", ".yml", ".html", ".css", ".js", ".csv", ".xml", ".cfg", ".ini", ".toml"}
     count = 0
+    now = time.time()
+    recent_threshold = now - 86400  # 24 小時內修改視為「近期變更」
     ws = Path(abs_path)
     for f in ws.rglob("*"):
         try:
@@ -140,6 +164,9 @@ def _scan_workspace_files(abs_path: str) -> int:
                         "workspace": abs_path,
                         "workspace_rel": rel
                     }
+                    # v5.1: 自動標記近期修改的檔案
+                    if stat.st_mtime >= recent_threshold:
+                        _modified_files[rel] = "recent_change"
                 count += 1
         except Exception:
             continue
@@ -237,7 +264,22 @@ def _detect_changes():
                     old_meta = _file_metadata.get(rel_path)
                 
                 if old_meta is None:
-                    with _lock: _file_metadata[rel_path] = meta
+                    # v5.2: 新檔案也標記為 modified
+                    with _lock:
+                        _file_metadata[rel_path] = meta
+                        _modified_files[rel_path] = "new_file"
+                    # 新 .py 檔案也做語法檢查
+                    if rel_path.endswith('.py'):
+                        full_path = BASE_DIR / rel_path
+                        try:
+                            content = full_path.read_text("utf-8", errors="ignore")
+                            compile(content, rel_path, 'exec')
+                            changed_py_files.append((rel_path, content))
+                        except SyntaxError as e:
+                            with _lock:
+                                _modified_files[rel_path] = f"syntax_error: Line {e.lineno}"
+                        except Exception:
+                            pass
                 elif old_meta["hash"] != meta["hash"]:
                     # 偵測到變更，自動加入歷史紀錄 (如果是外部修改)
                     full_path = BASE_DIR / rel_path
@@ -557,11 +599,22 @@ class LiveCodeStudioHandler(BaseHTTPRequestHandler):
             _session_workdir = str(Path(workdir).resolve())
             _session_active = True
             _session_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            add_repl_log(f"🚀 Session 啟動: {_session_workdir}")
+            # v5.2: 自動將工作目錄加入監控（全面追蹤）
+            # 安全防護：只對 < 5000 檔案的目錄自動掃描
+            try:
+                file_count = sum(1 for _ in Path(_session_workdir).rglob("*") if _.is_file())
+            except Exception:
+                file_count = 99999
+            if file_count < 5000:
+                ws_result = _add_workspace(_session_workdir, name="_hermes_session")
+            else:
+                ws_result = {"status": "skipped", "message": f"目錄過大 ({file_count} 檔案)，跳過自動掃描"}
+            add_repl_log(f"🚀 Session 啟動: {_session_workdir} ({file_count} 檔案)")
             self._send_json({
                 "status": "ok",
                 "workdir": _session_workdir,
-                "started_at": _session_started_at
+                "started_at": _session_started_at,
+                "auto_workspace": ws_result
             })
         elif self.path == "/api/session/stop":
             _session_active = False
@@ -866,7 +919,32 @@ def _start_server(force=False):
     if _server_instance: return True, f"http://localhost:{PORT}"
     global _file_metadata
     _file_metadata = _scan_files(full_scan=True)
+    
+    # v5.3: 啟動時自動載入持久化工作區 + 預設涵蓋 Hermes 常用目錄
+    saved = _load_workspaces()
+    if saved:
+        for ws_path, ws_info in saved.items():
+            if Path(ws_path).exists():
+                _workspaces[ws_path] = ws_info
+                _scan_workspace_files(ws_path)
+        add_repl_log(f"📂 已載入 {len(_workspaces)} 個持久化工作區")
+    
+    # 預設目錄（永久涵蓋，不受 session 影響）
+    default_dirs = [
+        (str(BASE_DIR), "Alice Legacy"),
+        (os.path.expandvars(r"%LOCALAPPDATA%\hermes\skills\alice"), "Hermes Skills"),
+    ]
+    for d, name in default_dirs:
+        if Path(d).exists() and d not in _workspaces:
+            _add_workspace(d, name=name)
+    
     threading.Thread(target=_detect_changes, daemon=True).start()
+    
+    # v5.3: 啟動時自動建立預設 Session（不再顯示「未連線」）
+    global _session_workdir, _session_active, _session_started_at
+    _session_workdir = str(BASE_DIR)
+    _session_active = True
+    _session_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         _server_instance = HTTPServer(("0.0.0.0", PORT), LiveCodeStudioHandler)
         _server_thread = threading.Thread(target=_server_instance.serve_forever, daemon=True)
