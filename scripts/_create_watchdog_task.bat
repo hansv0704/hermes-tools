@@ -1,0 +1,1 @@
+schtasks /create /tn Hermes_Gateway_Watchdog /tr "C:\Users\User\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe C:\Users\User\Desktop\Hermes工具區\scripts\gateway_watchdog.py" /sc minute /mo 5 /f
