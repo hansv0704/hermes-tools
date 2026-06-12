@@ -9,10 +9,15 @@ echo  ║     含殭屍行程清理                    ║
 echo  ╚══════════════════════════════════════╝
 echo.
 
-echo  [1/6] 全清所有 hermes/python 行程...
-:: 先殺小行程（殭屍），再殺主行程
+echo  [1/6] 全清後端行程...
+:: 檢查桌面版狀態
+tasklist /fi "IMAGENAME eq Hermes.exe" 2>nul | findstr /C:"Hermes.exe" >nul
+if %errorlevel% equ 0 (
+    echo    ⚠ 桌面版還在執行，請正常關閉（右下角右鍵→離開）
+    echo    只清後端行程，保留桌面版以免語言設定遺失
+)
+:: 只殺後端行程，不動桌面版 Hermes.exe
 taskkill /f /im hermes.exe >nul 2>&1
-taskkill /f /im Hermes.exe >nul 2>&1
 taskkill /f /im python.exe >nul 2>&1
 :: 等一下確保全部死透
 timeout /t 2 /nobreak >nul

@@ -8,6 +8,19 @@ echo   避開桌面版 Update 按鈕的 0xC0000005 bug
 echo ============================================
 echo.
 
+echo  ⚠ 請先正常關閉桌面版（右下角右鍵 → 離開）
+echo.
+tasklist /fi "IMAGENAME eq Hermes.exe" 2>nul | findstr /C:"Hermes.exe" >nul
+if %errorlevel% equ 0 (
+    echo  ⛔ 桌面版還在執行中，請先正常關閉再繼續
+    echo     右下角 Hermes 圖示 → 右鍵 → 離開
+    echo.
+    pause
+    exit /b 1
+)
+echo  ✓ 桌面版已關閉，開始更新...
+echo.
+
 set "HERMES_DIR=%LOCALAPPDATA%\hermes"
 set "REPO_DIR=%LOCALAPPDATA%\hermes\hermes-agent"
 
