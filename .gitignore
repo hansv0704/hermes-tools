@@ -2,6 +2,9 @@
 Alice記憶_backup/
 Alice技能_backup/
 
+# 非 Hermes 工具檔案（公司文件等）
+作業區/
+
 # OS 檔案
 Thumbs.db
 Desktop.ini
