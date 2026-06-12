@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alice AI 投資代理人 v3.0</title>
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app">
+<!-- ═══════════ TOP BAR ═══════════ -->
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">🧠</div>
+    <h1>Alice AI</h1><span class="ver">v3.0</span>
+  </div>
+  <div class="actions">
+    <span class="status-chip chip-offline" id="chipMega">
+      <span class="chip-dot"></span><span id="chipMegaText">兆豐未登入</span>
+    </span>
+    <button class="btn btn-ghost btn-sm" id="btnMegaLogin" onclick="showMegaLogin()">登入</button>
+  </div>
+</div>
+
+<!-- ═══════════ MAIN GRID ═══════════ -->
+<div class="main-grid">
+
+<!-- ═══ LEFT: Tabs ═══ -->
+<div id="leftCol">
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab active" data-tab="ai" onclick="switchTab('ai')">🧠 AI 任務</button>
+    <button class="tab" data-tab="paper" onclick="switchTab('paper')">🧪 紙上實驗室</button>
+  </div>
+
+  <!-- ═══ TAB: AI 任務 ═══ -->
+  <div class="tab-content active" id="tab-ai">
+
+    <div class="section-title">
+      <span style="font-size:20px">🧠</span>
+      <h2>AI 投資任務</h2>
+      <select id="selMission" onchange="switchMission(this.value)" style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:99px;padding:5px 12px;color:var(--text);font-size:11px;font-family:inherit;max-width:180px;cursor:pointer;margin-left:auto">
+        <option value="">選擇任務...</option>
+      </select>
+      <button class="btn btn-primary btn-xs" onclick="showNewMission()">＋</button>
+      <span class="status-chip chip-offline" id="chipLoop">
+        <span class="chip-dot"></span><span id="chipLoopText">待命</span>
+      </span>
+      <button class="btn btn-success btn-xs" id="btnLoop" onclick="toggleLoop()" disabled>▶</button>
+      <button class="btn btn-ghost btn-xs" id="btnClear" onclick="deleteMission()" style="color:var(--red)" title="清除">🗑</button>
+    </div>
+
+    <!-- 任務進度卡 -->
+    <div class="card mb16" id="cardMission">
+      <div class="card-header"><span class="icon">🎯</span><h3>任務進度</h3></div>
+      <div class="empty"><span class="icon">📋</span><p>尚未建立任務<br><span class="text-xs">點擊 ＋ 開始 AI 自主投資</span></p></div>
+    </div>
+
+    <!-- 資產指標 -->
+    <div class="metrics-4" id="metricsAI">
+      <div class="metric"><div class="label">💰 總資產</div><div class="value" id="mAI_asset">-</div></div>
+      <div class="metric"><div class="label">📊 累計損益</div><div class="value" id="mAI_pnl">-</div><div class="sub" id="mAI_pnlpct"></div></div>
+      <div class="metric"><div class="label">📦 AI 持倉</div><div class="value" id="mAI_pos">0</div></div>
+      <div class="metric"><div class="label">🔄 循環</div><div class="value" id="mAI_cycles">0</div></div>
+    </div>
+
+    <!-- 圖表 -->
+    <div class="card mb16">
+      <div class="card-header"><span class="icon">📈</span><h3>資產走勢</h3></div>
+      <div class="chart-wrap"><canvas id="chartAsset"></canvas></div>
+    </div>
+
+    <!-- AI 持倉 -->
+    <div class="card mb16">
+      <div class="card-header"><span class="icon">🤖</span><h3>AI 持倉</h3><span class="text-xs" id="aiPosCount">0 檔</span></div>
+      <div style="max-height:200px;overflow-y:auto">
+        <table class="holdings-table">
+          <thead><tr><th>代號</th><th>名稱</th><th>股數</th><th>成本</th><th>現價</th><th>損益</th></tr></thead>
+          <tbody id="aiHoldingsBody"><tr><td colspan="6"><div class="empty"><p>尚無 AI 持倉</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AI 決策日誌 -->
+    <div class="card">
+      <div class="card-header"><span class="icon">💬</span><h3>AI 決策日誌</h3><span class="text-xs">即時</span></div>
+      <div class="decision-feed" id="decisionFeed">
+        <div class="empty"><p>等待 AI 開始思考…</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: 紙上實驗室 ═══ -->
+  <div class="tab-content" id="tab-paper">
+
+    <div class="section-title">
+      <span style="font-size:20px">🧪</span>
+      <h2>紙上實驗室</h2>
+      <span class="badge" style="background:rgba(245,158,11,0.1);color:var(--amber)">虛擬資金・零風險</span>
+      <select id="selPaperMission" onchange="switchPaperMission(this.value)" style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:99px;padding:5px 12px;color:var(--text);font-size:11px;font-family:inherit;max-width:180px;cursor:pointer;margin-left:auto">
+        <option value="">選擇實驗...</option>
+      </select>
+      <button class="btn btn-primary btn-xs" onclick="showNewPaperMission()">＋</button>
+      <span class="status-chip chip-offline" id="chipPaperLoop">
+        <span class="chip-dot"></span><span id="chipPaperLoopText">待命</span>
+      </span>
+      <button class="btn btn-success btn-xs" id="btnPaperLoop" onclick="togglePaperLoop()" disabled>▶</button>
+      <button class="btn btn-ghost btn-xs" id="btnPaperClear" onclick="deletePaperMission()" style="color:var(--red)" title="清除">🗑</button>
+    </div>
+
+    <!-- 紙上任務進度 -->
+    <div class="card mb16" id="cardPaperMission">
+      <div class="card-header"><span class="icon">🔬</span><h3>實驗進度</h3></div>
+      <div class="empty"><span class="icon">🧪</span><p>尚未建立紙上實驗<br><span class="text-xs">建立一個虛擬任務來觀察 AI 交易行為</span></p></div>
+    </div>
+
+    <!-- 紙上指標 -->
+    <div class="metrics-4" id="metricsPaper">
+      <div class="metric"><div class="label">💰 總資產</div><div class="value" id="mP_asset">-</div></div>
+      <div class="metric"><div class="label">📊 累計損益</div><div class="value" id="mP_pnl">-</div><div class="sub" id="mP_pnlpct"></div></div>
+      <div class="metric"><div class="label">📦 AI 持倉</div><div class="value" id="mP_pos">0</div></div>
+      <div class="metric"><div class="label">🔄 循環</div><div class="value" id="mP_cycles">0</div></div>
+    </div>
+
+    <!-- 紙上圖表 -->
+    <div class="card mb16">
+      <div class="card-header"><span class="icon">📈</span><h3>資產走勢</h3></div>
+      <div class="chart-wrap"><canvas id="chartPaper"></canvas></div>
+    </div>
+
+    <!-- 紙上 AI 持倉 -->
+    <div class="card mb16">
+      <div class="card-header"><span class="icon">🤖</span><h3>AI 模擬持倉</h3><span class="text-xs" id="paperPosCount">0 檔</span></div>
+      <div style="max-height:200px;overflow-y:auto">
+        <table class="holdings-table">
+          <thead><tr><th>代號</th><th>名稱</th><th>股數</th><th>成本</th><th>現價</th><th>損益</th></tr></thead>
+          <tbody id="paperHoldingsBody"><tr><td colspan="6"><div class="empty"><p>尚無持倉</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 紙上決策日誌 -->
+    <div class="card">
+      <div class="card-header"><span class="icon">💬</span><h3>AI 決策日誌</h3><button class="btn btn-ghost btn-xs" onclick="exportPaperLog()" style="margin-left:auto">📥 匯出</button></div>
+      <div class="decision-feed" id="paperDecisionFeed">
+        <div class="empty"><p>等待 AI 開始思考…</p></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /leftCol -->
+
+<!-- ═══ RIGHT: 兆豐帳戶 ═══ -->
+<div id="rightCol">
+  <div class="section-title">
+    <span style="font-size:20px">🏦</span>
+    <h2>兆豐帳戶</h2>
+    <span class="badge" style="background:rgba(16,185,129,0.1);color:var(--green)" id="badgeMega">真實帳戶</span>
+  </div>
+
+  <div class="card mb16" id="cardMegaAcct">
+    <div class="card-header"><span class="icon">💳</span><h3>帳戶總覽</h3></div>
+    <div class="empty"><span class="icon">🔐</span><p>請先登入兆豐<br><span class="text-xs">以查詢真實庫存與資產</span></p></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="icon">📋</span><h3>🏦 兆豐持倉</h3><span class="text-xs" id="megaPosCount">0 檔</span></div>
+    <div style="max-height:380px;overflow-y:auto">
+      <table class="holdings-table">
+        <thead><tr><th>代號</th><th>名稱</th><th>股數</th><th>成本</th><th>現價</th><th>損益</th></tr></thead>
+        <tbody id="megaHoldingsBody">
+          <tr><td colspan="6"><div class="empty"><p>請先登入兆豐</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="icon">📡</span><h3>事件串流</h3></div>
+    <div class="log-stream" id="logStream">
+      <div class="ll"><span class="ts">--:--</span>等待連線…</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main-grid -->
+</div><!-- /app -->
+
+<!-- ═══ Modal: 新任務 ═══ -->
+<div class="modal-overlay" id="modalMission">
+  <div class="modal">
+    <h2>🎯 建立投資任務</h2>
+    <div class="modal-sub">設定目標金額與期限，AI 將自主運用資金達成任務</div>
+    <div class="form-group"><label>任務名稱</label><input type="text" id="fName" placeholder="例如：萬元翻倍計畫"></div>
+    <div class="form-group"><label>任務描述</label><textarea id="fDesc" rows="2" placeholder="用1萬元在一個月內翻倍到2萬元"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>起始資金 NT$</label><input type="number" id="fBudget" value="10000" min="1000"></div>
+      <div class="form-group"><label>目標金額 NT$</label><input type="number" id="fTarget" value="20000" min="1000"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>截止日期</label><input type="date" id="fDeadline"></div>
+      <div class="form-group"><label>風險等級</label>
+        <select id="fRisk">
+          <option value="conservative">保守</option><option value="moderate" selected>穩健</option>
+          <option value="aggressive">積極</option><option value="extreme">極限</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>交易模式</label>
+        <select id="fMode">
+          <option value="paper">📝 紙上交易</option>
+          <option value="live">🏦 實盤交易（需登入兆豐）</option>
+        </select>
+      </div>
+    </div>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">⚙️ 交易閾值設定 (可選)</summary>
+      <div style="margin-top:10px;padding:12px;background:rgba(255,255,255,0.02);border-radius:var(--radius-xs);border:1px solid var(--border)">
+        <div class="form-row">
+          <div class="form-group"><label>最低買進評分 (0-100)</label><input type="number" id="fBuyScore" value="60" min="0" max="100"></div>
+          <div class="form-group"><label>停損 %</label><input type="number" id="fStopLoss" value="5" min="0" max="50" step="0.5"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>停利 %</label><input type="number" id="fTakeProfit" value="12" min="0" max="100" step="0.5"></div>
+          <div class="form-group"><label>最大持股數</label><input type="number" id="fMaxPos" value="5" min="1" max="20"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>單股上限 %</label><input type="number" id="fMaxSingle" value="25" min="5" max="50"></div>
+          <div class="form-group"><label>循環間隔 (分)</label><input type="number" id="fInterval" value="15" min="1" max="120"></div>
+        </div>
+      </div>
+    </details>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-outline" onclick="closeMissionModal()">取消</button>
+      <button class="btn btn-primary" onclick="createMission()">🚀 建立任務</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal: 兆豐登入 ═══ -->
+<div class="modal-overlay" id="modalMega">
+  <div class="modal">
+    <h2>🔐 登入兆豐證券</h2>
+    <div class="modal-sub">使用 SpeedyAPI 憑證連線交易主機 spapi.emega.com.tw:56789</div>
+    <div class="form-row">
+      <div class="form-group"><label>身分證字號</label><input type="text" id="mUserID"></div>
+      <div class="form-group"><label>電子交易密碼</label><input type="password" id="mPassword" placeholder="自行輸入"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>證券帳號 (7碼)</label><input type="text" id="mAccount"></div>
+      <div class="form-group"><label>分公司代碼 (4碼)</label><input type="text" id="mBrokerID"></div>
+    </div>
+    <div class="form-group"><label>憑證密碼 (R124662445.pfx)</label><input type="password" id="mPfxPwd" placeholder="憑證密碼"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-outline" onclick="closeMegaModal()">取消</button>
+      <button class="btn btn-primary" onclick="doMegaLogin()">🔐 登入</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>

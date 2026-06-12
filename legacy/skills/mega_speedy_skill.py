@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # ============================================================
 #  SpeedyAPI 路徑設定
 # ============================================================
-_BASE_DIR = Path(__file__).resolve().parent.parent
+_BASE_DIR = Path(__file__).resolve().parent.parent.parent  # skills → legacy → root
 MEGA_SPEEDY_DIR = str(_BASE_DIR / "MEGA" / "SpeedyAPI_PY" / "megaapi" / "megaSpeedy")
 MEGA_PFX_DIR = str(_BASE_DIR / "MEGA" / "MEGARA")
 MEGA_PFX_FILE = os.path.join(MEGA_PFX_DIR, "R124662445.pfx")

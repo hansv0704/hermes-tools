@@ -1,0 +1,72 @@
+﻿══════════════════════════════════════════
+  Hermes工具區 — 使用說明
+══════════════════════════════════════════
+
+【檔案清單】
+
+  ★ 初始化新端.bat         ← 新電腦第一個雙擊
+  ★ 安全更新Hermes.bat      ← 日常更新
+  ★ Hermes急救.bat          ← 出任何事就按
+    Defender排除Hermes.bat  ← 治本（需管理員權限）
+    修復Hermes.bat          ← 最後手段（重建 venv）
+    0001-...patch           ← 自動備份，勿手動動
+
+
+【同步到新電腦】
+
+  1. 把整個「Hermes工具區」資料夾複製到新電腦桌面
+  2. 在新電腦上雙擊「初始化新端.bat」
+  3. 完成，可以正常使用
+
+
+【日常使用】
+
+  更新 → 雙擊 安全更新Hermes.bat → 雙擊 Hermes急救.bat → 開桌面版
+
+  出事了 → 雙擊 Hermes急救.bat → 開桌面版
+
+
+【各工具詳解】
+
+  ■ 初始化新端.bat
+    自動套用 os.execvpe 修復、建立桌面版設定、確認記憶狀態
+    新電腦或重灌後第一個執行
+
+  ■ 安全更新Hermes.bat
+    git pull + hermes update，自動保留 os.execvpe 修復
+    不會觸發桌面版的崩潰循環
+    結束後會提示你執行 Hermes急救.bat 啟動
+
+  ■ Hermes急救.bat (v2.0)
+    六步驟自動修復：
+      1. 全清殭屍行程（wmic 殺到一隻不剩）
+      2. 檢查 os.execvpe 修復（不見就 git am 還原）
+      3. 檢查桌面版 alice profile 設定
+      4. 設定 git rebase 保護
+      5. 殭屍防範確認
+      6. CLI 繞過 DEP 直接啟動 gateway
+
+  ■ Defender排除Hermes.bat
+    把 hermes.exe 和 python.exe 加入 Defender 排除
+    ★ 需右鍵 → 以系統管理員身分執行
+    ★ 做完後不再被 DEP 誤殺，可正常用桌面版啟動
+
+  ■ 修復Hermes.bat
+    深度修復：重建 venv + 重裝依賴
+    只在 hermes doctor 報錯時才需要用
+
+
+【殭屍 python.exe 說明】
+
+  正常：1~2 個（gateway + agent）
+  異常：七八個 → 雙擊 Hermes急救.bat 全清
+
+  修復後不再產生新殭屍，急救第一步也會自動清理
+
+
+【三種崩潰路徑對照】
+
+  看到 desktop.log 有 exited(X)：
+    3221225477 → DEP 擊殺 → Defender排除 或 急救
+    Routing to machine dashboard → exited(0) → 修復掉了 → 急救自動 git am
+    Machine dashboard already running → exited(0) → Port 殘留 → 急救自動清
