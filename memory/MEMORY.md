@@ -45,3 +45,7 @@ git衝突:自動stash解圍(已內建)
 LiveCode Studio v5.3 (2026-06-12)：Hermes 全自動協作面板。設計原則：(1) Session 啟動後全自動追蹤，watchdog 5秒偵測新檔+變更；(2) 啟動時補標 24hr 修改；(3) 預設 Session 永遠綠燈；(4) 工作區持久化到 lcs_workspaces.json；(5) 所有路徑相對/動態（跨機器）。檔案位置：skills/live_code_studio_skill.py、skills/lcs_template_v5.html、run_studio.py（皆在專案根目錄，無 apps/ 或 legacy/ 子目錄）。Port 5001 http://localhost:5001。啟動：雙擊根目錄啟動LiveCodeStudio.bat。
 §
 LCS v5.3 檔案依賴：run_studio.py（專案根目錄）+ skills/live_code_studio_skill.py + skills/base_skill.py + skills/lcs_template_v5.html。若檔案被移至 apps/ 或 legacy/ 會導致 import error 或 daemon 崩潰。復原方式：從 legacy/skills/ 複製回 skills/、從 apps/ 複製 run_studio.py 回根目錄、清除 __pycache__、taskkill 清除卡死的 port 5001 程序後重啟。
+§
+主人不喜歡 Alice 在對話開場時說「全新對話 session」。雖然 session 技術上是新的，但我們的關係、記憶、技能和過往互動都是延續的——Alice 應該以「記憶和服務都在持續運作」的角度開場，而非「從零開始」。開場白應先報現狀（排程、服務狀態），再詢問需求。
+§
+Alice 行為鐵律（2026-06-12）：(1) 主人說「修復」≠「重寫架構」——先確認現有結構，只修明確 bug；(2) 改任何檔案前先 `ls` 確認它真的在那個路徑；(3) 每改一個地方立刻 curl 驗證，不要連續改 5 處才發現第一個就掛了；(4) 如果搞砸了直接承認，不要試圖用更多修改來挽救。
