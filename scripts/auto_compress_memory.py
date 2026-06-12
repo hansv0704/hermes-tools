@@ -84,7 +84,7 @@ def compress():
         subprocess.run(["git", "commit", "-m",
                         f"compress: {len(entries)}→{len(new_entries)}條 v{ver} ({new_pct:.0%})"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
-        subprocess.run(["git", "push"],
+        subprocess.run(["git", "push", "origin", "main"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
         print(f"[OK] 已推送到 GitHub (v{ver})")
     except Exception as e:

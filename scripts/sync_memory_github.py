@@ -111,11 +111,17 @@ def push():
     def try_push():
         subprocess.run(["git", "add", "-A"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
+        # 檢查是否有變更需要 commit
+        diff_check = subprocess.run(["git", "diff", "--cached", "--quiet"],
+                                    cwd=str(REPO_DIR), capture_output=True)
+        if diff_check.returncode == 0:
+            return False  # 沒有變更，不 commit
         subprocess.run(["git", "commit", "-m",
                         f"sync: auto {datetime.now().strftime('%m/%d %H:%M')}"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
-        subprocess.run(["git", "push"],
+        subprocess.run(["git", "push", "origin", "main"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
+        return True
 
     try:
         try_push()
