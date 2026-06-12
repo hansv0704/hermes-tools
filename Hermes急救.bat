@@ -68,7 +68,7 @@ if %errorlevel% equ 0 (
 )
 
 echo  [6/6] 從 CLI 啟動 gateway（繞過 DEP）...
-start "" "%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\hermes.exe" gateway run --profile alice
+start "" "%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\pythonw.exe" -m hermes_cli.main gateway run --profile alice
 
 echo.
 echo  ╔══════════════════════════════════════╗
