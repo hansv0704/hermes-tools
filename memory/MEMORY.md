@@ -2,13 +2,9 @@
 §
 (k) Windows 檔案編碼鐵律：.bat 用 utf-8-sig(BOM)、.vbs 用 ASCII（不吃UTF-8，中文路徑用 fso.GetParentFolderName 繞過）、.py/.pyw 用 utf-8 無 BOM。違反 = 亂碼或直接炸掉。已在 hermes_tray.vbs 犯過 2 次。
 §
-應用服務：LiveCode Studio v5.1 (port 5001)，支援 --daemon 背景模式（pythonw + logs/lcs_daemon.log）。前端雙 Tab（操作紀錄/工作區）。工作區自動標記 24hr 內修改為 recent_change。已知工作區：Hermes Skills、Alice Legacy。主人期望跨 session 自動可見修改——目前需顯式加入工作區才能實現。Hermes session 追蹤需主動呼叫 API。啟動 .bat 已改為背景分離模式。備份：skills/live_code_studio_skill_v4_backup.py
-§
 部署：git clone + bootstrap.bat 雙擊→自動 clone+一鍵安裝→解密→複製記憶到 alice+default→設 alice 預設 profile→偵測 Gateway 避免搶 TG。⚠️ bootstrap 若執行 hermes profile use alice，必須同步建立 %APPDATA%/Hermes/active-profile.json（{\"profile\":\"alice\"}），否則桌面版啟動時 os.execvpe 崩潰。cron 由 Alice 對話中建立。.env 用 openssl aes-256-cbc 加密。
 §
 截圖分析用 Gemini Flash (gemini-2.5-flash)，結果回傳 DeepSeek 繼續工作。PyAutoGUI 操控實際 Chrome 桌面用於需登入狀態的網站。瀏覽器自動化優先 Playwright DOM 操控（playwright_profile 持久化 session），pyautogui 只作備用。Key 讀取用字串拼接或獨立 txt 檔繞過遮蔽。
-§
-LiveCode Studio v5.1 (2026-06-11)：v5.0 + `_scan_workspace_files` 自動標記 24hr 內修改的檔案為 recent_change。已知工作區：Hermes Skills (C:/Users/hans/AppData/Local/hermes/skills/alice)、Alice Legacy (C:/Users/hans/Desktop/Alice_Brain_Arch_20260506_031953)。LCS 需手動加入工作區才能跨 session 看到修改——主人期望跨 session 自動可見，但目前需顯式註冊。Hermes session 追蹤需主動呼叫 /api/session/start + /api/files/track。備份：skills/live_code_studio_skill_v4_backup.py，模板：skills/lcs_template_v5.html
 §
 GIS 監控 v2.4：watchdog 只監聽 sensor_config.json、雙軌（pending_set儀器繪圖+ccd_status CCD純文字）、啟動掃描、TG三層級🧊/🔴/🟡。monitor.py fix：normal_set sync bug（第814行漏寫致延長觀察卡住）、tray icon雙擊+綠黃紅狀態色。numpy崩潰→force-reinstall。故障 SOP：process list→pending_set→token→matplotlib
 §
@@ -45,3 +41,7 @@ git衝突:自動stash解圍(已內建)
 桌面版前端:切session時 tapClientLookup Index 10 out of bounds(off-by-one) 非我方可修 暫時解法用/reset清對話再切
 §
 桌面版語言重置:taskkill強殺Hermes.exe導致Electron無法存偏好→工具區已改用正常關閉流程 不強殺Hermes.exe
+§
+LiveCode Studio v5.3 (2026-06-12)：Hermes 全自動協作面板。設計原則：(1) Session 啟動後全自動追蹤，watchdog 5秒偵測新檔+變更；(2) 啟動時補標 24hr 修改；(3) 預設 Session 永遠綠燈；(4) 工作區持久化到 lcs_workspaces.json；(5) 所有路徑相對/動態（跨機器）。檔案位置：skills/live_code_studio_skill.py、skills/lcs_template_v5.html、run_studio.py（皆在專案根目錄，無 apps/ 或 legacy/ 子目錄）。Port 5001 http://localhost:5001。啟動：雙擊根目錄啟動LiveCodeStudio.bat。
+§
+LCS v5.3 檔案依賴：run_studio.py（專案根目錄）+ skills/live_code_studio_skill.py + skills/base_skill.py + skills/lcs_template_v5.html。若檔案被移至 apps/ 或 legacy/ 會導致 import error 或 daemon 崩潰。復原方式：從 legacy/skills/ 複製回 skills/、從 apps/ 複製 run_studio.py 回根目錄、清除 __pycache__、taskkill 清除卡死的 port 5001 程序後重啟。
