@@ -1,11 +1,6 @@
 
-"""Hermes Gateway 系統列小工具 v2 — 桌面工作列從此乾淨"""
-import os
-import sys
-import subprocess
-import threading
-import time
-
+"""Hermes Gateway 系統列小工具 v3 — 精準殺，不波及 agent session"""
+import os, sys, subprocess, threading, time
 import pystray
 from PIL import Image, ImageDraw
 
@@ -15,7 +10,6 @@ PROFILE = "alice"
 PORT = 9120
 
 
-# ── 圖示產生 ──────────────────────────────────────
 def _make_icon(color: str) -> Image.Image:
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -27,34 +21,36 @@ def _make_icon(color: str) -> Image.Image:
 
 ICON_RUNNING = _make_icon("#22c55e")
 ICON_STOPPED = _make_icon("#6b7280")
-ICON_RESTART = _make_icon("#f59e0b")  # 黃 = 重啟中
+ICON_RESTART = _make_icon("#f59e0b")
 
 
-# ── Gateway 控制 ──────────────────────────────────
-def gateway_running() -> bool:
+def _get_port_pid() -> str:
+    """找出佔用 port 的 PID"""
     try:
-        r = subprocess.run(
-            ["netstat", "-ano"], capture_output=True, text=True, timeout=3
-        )
-        return f":{PORT}" in r.stdout and "LISTENING" in r.stdout
+        r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, timeout=3)
+        for line in r.stdout.splitlines():
+            if f":{PORT}" in line and "LISTENING" in line:
+                return line.strip().split()[-1]
     except Exception:
-        return False
+        pass
+    return ""
 
 
-def _kill_all_gateways():
-    """殺光所有 gateway 相關行程（python + hermes + pythonw），除了自己"""
-    my_pid = str(os.getpid())
-    # 先殺後端行程
-    for name in ["python.exe", "pythonw.exe", "hermes.exe"]:
-        subprocess.run(
-            ["taskkill", "/f", "/fi", f"PID ne {my_pid}", "/im", name],
-            capture_output=True,
-        )
+def gateway_running() -> bool:
+    return bool(_get_port_pid())
+
+
+def _kill_gateway_ony():
+    """只殺佔用 port 9120 的那一個行程，不波及 agent session"""
+    pid = _get_port_pid()
+    if pid:
+        subprocess.run(["taskkill", "/f", "/pid", pid], capture_output=True)
+        time.sleep(1)
 
 
 def start_gateway():
-    _kill_all_gateways()
-    time.sleep(2)
+    if gateway_running():
+        return  # 已經在跑就不重複開
     subprocess.Popen(
         [VENV_PYTHONW, "-m", "hermes_cli.main", "gateway", "run", "--profile", PROFILE],
         creationflags=subprocess.CREATE_NO_WINDOW,
@@ -62,31 +58,32 @@ def start_gateway():
 
 
 def stop_gateway():
-    _kill_all_gateways()
+    _kill_gateway_ony()
 
 
-# ── 系統列選單 ────────────────────────────────────
+def restart_gateway():
+    _kill_gateway_ony()
+    time.sleep(2)
+    start_gateway()
+
+
 def on_click(icon: pystray.Icon, item):
     action = str(item)
     if "啟動" in action:
         icon.icon = ICON_RESTART
         start_gateway()
         time.sleep(3)
-        icon.icon = ICON_RUNNING if gateway_running() else ICON_STOPPED
     elif "停止" in action:
         stop_gateway()
         time.sleep(1)
-        icon.icon = ICON_STOPPED
     elif "重新啟動" in action:
         icon.icon = ICON_RESTART
-        stop_gateway()
-        time.sleep(1)
-        start_gateway()
+        restart_gateway()
         time.sleep(3)
-        icon.icon = ICON_RUNNING if gateway_running() else ICON_STOPPED
     elif "離開" in action:
         icon.stop()
-    # 重建選單
+        return
+    icon.icon = ICON_RUNNING if gateway_running() else ICON_STOPPED
     if icon.visible:
         icon.menu = build_menu()
 
@@ -104,15 +101,9 @@ def build_menu():
     )
 
 
-# ── 主程式 ────────────────────────────────────────
 class TrayApp:
     def __init__(self):
-        self.icon = pystray.Icon(
-            "hermes_gateway",
-            ICON_STOPPED,
-            "Hermes Gateway",
-            menu=build_menu(),
-        )
+        self.icon = pystray.Icon("hermes_gateway", ICON_STOPPED, "Hermes Gateway", menu=build_menu())
         self._running = True
         self._thread = threading.Thread(target=self._poll, daemon=True)
 
@@ -125,7 +116,6 @@ class TrayApp:
 
     def run(self):
         self._thread.start()
-        # 啟動時：如果沒有 gateway 在跑就自動啟動
         if not gateway_running():
             self.icon.icon = ICON_RESTART
             start_gateway()
