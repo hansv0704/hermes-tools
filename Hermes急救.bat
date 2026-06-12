@@ -67,8 +67,9 @@ if %errorlevel% equ 0 (
     echo    ⚠ 防範遺失，請執行 git am 還原修復
 )
 
-echo  [6/6] 從 CLI 啟動 gateway（繞過 DEP）...
-start "" "%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\pythonw.exe" -m hermes_cli.main gateway run --profile alice
+echo  [6/6] 啟動 Hermes 系統列小工具...
+start "" "%USERPROFILE%\Desktop\Hermes工具區\hermes_tray.pyw"
+echo    ✓ 系統列圖示已啟動（右下角綠色 H）
 
 echo.
 echo  ╔══════════════════════════════════════╗
