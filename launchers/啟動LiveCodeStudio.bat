@@ -1,4 +1,6 @@
 @echo off
+<<<<<<< HEAD
+<<<<<<<< HEAD:launchers/啟動LiveCodeStudio.bat
 title Live Code Studio v5.0
 cd /d "%~dp0.."
 
@@ -48,4 +50,12 @@ if %ERRORLEVEL% EQU 0 (
 echo.
 echo 💡 此視窗可安全關閉，LCS 在背景運行中
 echo 💡 關閉 LCS 請執行「關閉LiveCodeStudio.bat」
+========
+cd /d "%~dp0"
+python run_studio.py
+>>>>>>>> 3482b44b5f60053ed37eef547a2bdd5cced962ef:啟動LiveCodeStudio.bat
 pause
+=======
+cd /d "%~dp0.."
+python run_studio.py --daemon
+>>>>>>> 3482b44b5f60053ed37eef547a2bdd5cced962ef
