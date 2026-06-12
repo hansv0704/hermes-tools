@@ -19,40 +19,33 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-# 防止 CP950 編碼炸掉 subprocess (Windows 常見問題)
-os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-
 USERPROFILE = Path(os.environ["USERPROFILE"])
 LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", USERPROFILE / "AppData" / "Local"))
 
 HERMES_MEM_DIR = LOCALAPPDATA / "hermes" / "profiles" / "alice" / "memories"
 HERMES_DEFAULT_MEM_DIR = LOCALAPPDATA / "hermes" / "memories"
 
-def _resolve_repo_dir() -> Path:
-    import re
-    ws = os.environ.get("HERMES_WORKSPACE", "")
-    if ws:
-        ws = re.sub(r'%([^%]+)%', lambda m: os.environ.get(m.group(1), m.group(0)), ws)
-        ws_path = Path(ws)
-        if ws_path.exists():
-            return ws_path
-    for candidate in [USERPROFILE / "Desktop" / "Hermes工具區"]:
-        if candidate.exists():
-            return candidate
-    return USERPROFILE / "Desktop" / "Hermes工具區"
-
-REPO_DIR = _resolve_repo_dir()
+REPO_DIR = Path(os.environ.get("HERMES_WORKSPACE",
+    USERPROFILE / "Desktop" / "Hermes工具區"))
 REPO_MEM_DIR = REPO_DIR / "memory"
 
 FILES = ["USER.md", "MEMORY.md"]
 
 
-def _safe_run(cmd, **kwargs):
-    kwargs.setdefault('capture_output', True)
-    kwargs.setdefault('encoding', 'utf-8')
-    kwargs.setdefault('errors', 'replace')
-    import subprocess as _sp
-    return _sp.run(cmd, **kwargs)
+def _copy_newer_files(src_dir: Path, dst_dir: Path):
+    """從 src_dir 複製較新的檔案到 dst_dir（雙目錄合併）"""
+    if not src_dir.exists():
+        return
+    for f in src_dir.rglob("*"):
+        if f.is_file() and f.suffix not in (".db", ".db-shm", ".db-wal", ".lock", ".log"):
+            rel = f.relative_to(src_dir)
+            # 跳過 .git 目錄
+            if rel.parts and rel.parts[0] == ".git":
+                continue
+            dst = dst_dir / rel
+            if not dst.exists() or f.stat().st_mtime > dst.stat().st_mtime:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dst)
 
 
 def _parse_entries(path: Path) -> list[str]:
@@ -93,9 +86,14 @@ def push():
         print(f"[X] Repo 不存在: {REPO_DIR}")
         return False
 
+    # 0. 從 Hermes工具區合併檔案（雙目錄同步）
+    secondary = USERPROFILE / "Desktop" / "Hermes工具區"
+    if secondary.exists() and secondary != REPO_DIR:
+        _copy_newer_files(secondary, REPO_DIR)
+
     # 1. git pull 取得最新
     try:
-        _safe_run(["git", "pull"],
+        subprocess.run(["git", "pull"],
                        cwd=str(REPO_DIR), capture_output=True, timeout=30)
     except Exception:
         pass  # 可能已經是最新
@@ -132,13 +130,19 @@ def push():
 
     # 2. git commit + push（全倉庫同步，push 被拒時 rebase 重試）
     def try_push():
-        _safe_run(["git", "add", "-A"],
+        subprocess.run(["git", "add", "-A"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
-        _safe_run(["git", "commit", "-m",
+        # 檢查是否有變更需要 commit
+        diff_check = subprocess.run(["git", "diff", "--cached", "--quiet"],
+                                    cwd=str(REPO_DIR), capture_output=True)
+        if diff_check.returncode == 0:
+            return False  # 沒有變更，不 commit
+        subprocess.run(["git", "commit", "-m",
                         f"sync: auto {datetime.now().strftime('%m/%d %H:%M')}"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
-        _safe_run(["git", "push"],
+        subprocess.run(["git", "push", "origin", "main"],
                        cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
+        return True
 
     try:
         try_push()
@@ -146,7 +150,7 @@ def push():
     except subprocess.CalledProcessError:
         # push 被拒 → rebase 重試
         try:
-            _safe_run(["git", "pull", "--rebase"],
+            subprocess.run(["git", "pull", "--rebase"],
                            cwd=str(REPO_DIR), capture_output=True, timeout=30)
             try_push()
             print("[OK] 已推送到 GitHub (rebase)")
@@ -163,7 +167,7 @@ def push():
 def pull():
     """GitHub → 本地（版本變更整份覆蓋，否則逐條合併）"""
     try:
-        _safe_run(["git", "pull"],
+        subprocess.run(["git", "pull"],
                        cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
     except Exception as e:
         print(f"[X] Git pull 失敗: {e}")
