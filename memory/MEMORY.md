@@ -4,23 +4,21 @@
 §
 截圖用Gemini Flash(gemini-2.5-flash)，回傳DeepSeek。PyAutoGUI操控實際Chrome。瀏覽器優先Playwright DOM(playwright_profile持久化)，pyautogui備用。Key讀取用字串拼接或獨立txt。
 §
-<<<<<<< HEAD
-應用服務：LiveCode Studio v5.1 (port 5001)，支援 --daemon 背景模式（pythonw + logs/lcs_daemon.log）。前端雙 Tab（操作紀錄/工作區）。工作區自動標記 24hr 內修改為 recent_change。已知工作區：Hermes Skills、Alice Legacy。主人期望跨 session 自動可見修改——目前需顯式加入工作區才能實現。Hermes session 追蹤需主動呼叫 API。啟動 .bat 已改為背景分離模式。備份：skills/live_code_studio_skill_v4_backup.py
-=======
 GIS監控v2.4：watchdog監聽sensor_config.json、雙軌(pending_set繪圖+ccd_status CCD文字)、啟動掃描、TG三層級🧊/🔴/🟡。monitor.py fix：normal_set sync bug(第814行)、tray icon雙擊+綠黃紅狀態色。numpy崩潰→force-reinstall。SOP：process list→pending_set→token→matplotlib。
->>>>>>> 3482b44b5f60053ed37eef547a2bdd5cced962ef
 §
 Word正式報告規範：表格格式、字型、欄寬、配色以「115年度萬山…期中參考版.docx」為基準。中文字型=標楷體，英文數字=Times New Roman，同段落內run級別分開設定。
 §
 Grapher V9定稿：標楷體粗體純黑、四邊黑框無網格、圖例FontProperties(size=20,bold)、右Y軸黑字、時雨量=[OneHour]藍bar、累積=[RT]深紅#B91C1C折線、無箭頭標註、輸出V{N}.png至Desktop/charts/。skill: alice-scientific-charts
 §
+Hermes修復v3(5崩潰路徑)：A-DEP擊殺(Defender排除)、B-os.execvpe(Windows用subprocess.Popen+sys.exit)、C-profile re-exec死循環(HERMES_PROFILE_FROM_CLI)、D---replace陷阱、E-桌面vs CLI profile獨立(active-profile.json)。skill: alice-hermes-repair。
+§
+雙機設定：A端(公司)C:\Users\hans主力機GIS/投資/L2全在此、B端(家用)C:\Users\User且telegram.enabled=false。工具區同步hansv0704/hermes-tools每30分auto-sync。路徑用%USERPROFILE%不寫死。git衝突自動stash解圍。
+§
+LiveCode Studio v5.3：Hermes全自動協作面板port 5001。watchdog 5秒偵測、24hr修改補標、預設Session綠燈、工作區持久化lcs_workspaces.json。檔案：run_studio.py(根目錄)+skills/live_code_studio_skill.py+skills/base_skill.py+skills/lcs_template_v5.html。若誤移至apps/或legacy/會import error，從legacy/skills/復原、清__pycache__、taskkill port 5001重啟。
+§
 <<<<<<< HEAD
-GIS 警報層級格式：🧊數據凍結(freeze)、🔴達警戒(alert)、🟡達注意(attention)。caption 須含測站代碼、層級標題、詳細說明。watchdog token 解析需跳過值太短(<20字元)的行。
-§
-桌面版修復：Windows os.execvpe Segfault 根源在 hermes_cli/main.py:10364。source patch 已套用（main.py:10330 加 `sys.platform != "win32"` guard），skill=alice-hermes-maintenance v2.0。alice profile 現在可直接用桌面版，不需切 default。
-§
-GIS 監控（獨立循環）：大崩儀器DATA回傳，watchdog v2.3 只監聽 sensor_config.json。三層級警報 🧊freeze/🔴alert/🟡attention，HTML caption 含測站代碼+24h趨勢圖。故障排除 SOP：process list→pending_set→read_file 驗證 token→python matplotlib 測試。L2 巡檢 Playwright DOM+Gemini (2026-06-10)，嚴禁 pyautogui。災害 cron：35 5,11,14,17,20,23 * * * (暫停)。Grapher V9：標楷體粗體純黑，四邊黑框無網格。
-§
+Alice行為規範：開場白先報現狀(排程/服務狀態)再問需求，勿說「全新對話session」。鐵律：(1)修復≠重寫，先確認現有結構；(2)改檔前先ls確認路徑；(3)每改一處立即curl驗證；(4)搞砸直接承認，勿用更多修改挽救。
+=======
 主人正式報告的 Word 表格格式以「115年度萬山、寶山、來義等五處大規模崩塌地區監測計畫_工作執行計畫書_期中參考版.docx」為基準範本。未來操作 Word 文件（正式報告），表格樣式、字型、欄寬、配色等均須比照該文件的格式，而非自訂美觀樣式。v3 升級模板僅為能力展示用，非正式格式。
 §
 主人正式報告字型規範：中文使用「標楷體」，英文與數字使用「Times New Roman」。製作 Word 文件時，同一個段落內的中英數字須各自套用對應字型（透過 run 級別分開設定，或設定 East-Asian 字型為標楷體、Latin 字型為 Times New Roman）。
@@ -36,12 +34,22 @@ Hermes修復 v3：5崩潰路徑 — A:DEP擊殺(Defender排除)、B:os.execvpe(W
 LiveCode Studio v5.1 (2026-06-11)：v5.0 + `_scan_workspace_files` 自動標記 24hr 內修改的檔案為 recent_change。已知工作區：Hermes Skills (C:/Users/hans/AppData/Local/hermes/skills/alice)、Alice Legacy (C:/Users/hans/Desktop/Alice_Brain_Arch_20260506_031953)。LCS 需手動加入工作區才能跨 session 看到修改——主人期望跨 session 自動可見，但目前需顯式註冊。Hermes session 追蹤需主動呼叫 /api/session/start + /api/files/track。備份：skills/live_code_studio_skill_v4_backup.py，模板：skills/lcs_template_v5.html
 §
 記憶同步 cron ID 已更新為 54424bc21b88（雙向 pull+push，script=sync_memory_bidirectional.py，每30m）
+>>>>>>> 4f4a8eb (sync: auto 06/12 20:04)
+§
+<<<<<<< HEAD
+應用服務：LiveCode Studio v5.1 (port 5001)，支援 --daemon 背景模式（pythonw + logs/lcs_daemon.log）。前端雙 Tab（操作紀錄/工作區）。工作區自動標記 24hr 內修改為 recent_change。已知工作區：Hermes Skills、Alice Legacy。主人期望跨 session 自動可見修改——目前需顯式加入工作區才能實現。Hermes session 追蹤需主動呼叫 API。啟動 .bat 已改為背景分離模式。備份：skills/live_code_studio_skill_v4_backup.py
 =======
-Hermes修復v3(5崩潰路徑)：A-DEP擊殺(Defender排除)、B-os.execvpe(Windows用subprocess.Popen+sys.exit)、C-profile re-exec死循環(HERMES_PROFILE_FROM_CLI)、D---replace陷阱、E-桌面vs CLI profile獨立(active-profile.json)。skill: alice-hermes-repair。
+GIS監控v2.4：watchdog監聽sensor_config.json、雙軌(pending_set繪圖+ccd_status CCD文字)、啟動掃描、TG三層級🧊/🔴/🟡。monitor.py fix：normal_set sync bug(第814行)、tray icon雙擊+綠黃紅狀態色。numpy崩潰→force-reinstall。SOP：process list→pending_set→token→matplotlib。
+>>>>>>> 3482b44b5f60053ed37eef547a2bdd5cced962ef
 §
-雙機設定：A端(公司)C:\Users\hans主力機GIS/投資/L2全在此、B端(家用)C:\Users\User且telegram.enabled=false。工具區同步hansv0704/hermes-tools每30分auto-sync。路徑用%USERPROFILE%不寫死。git衝突自動stash解圍。
+<<<<<<< HEAD
+GIS 警報層級格式：🧊數據凍結(freeze)、🔴達警戒(alert)、🟡達注意(attention)。caption 須含測站代碼、層級標題、詳細說明。watchdog token 解析需跳過值太短(<20字元)的行。
 §
-LiveCode Studio v5.3：Hermes全自動協作面板port 5001。watchdog 5秒偵測、24hr修改補標、預設Session綠燈、工作區持久化lcs_workspaces.json。檔案：run_studio.py(根目錄)+skills/live_code_studio_skill.py+skills/base_skill.py+skills/lcs_template_v5.html。若誤移至apps/或legacy/會import error，從legacy/skills/復原、清__pycache__、taskkill port 5001重啟。
+桌面版修復：Windows os.execvpe Segfault 根源在 hermes_cli/main.py:10364。source patch 已套用（main.py:10330 加 `sys.platform != "win32"` guard），skill=alice-hermes-maintenance v2.0。alice profile 現在可直接用桌面版，不需切 default。
+§
+GIS 監控（獨立循環）：大崩儀器DATA回傳，watchdog v2.3 只監聽 sensor_config.json。三層級警報 🧊freeze/🔴alert/🟡attention，HTML caption 含測站代碼+24h趨勢圖。故障排除 SOP：process list→pending_set→read_file 驗證 token→python matplotlib 測試。L2 巡檢 Playwright DOM+Gemini (2026-06-10)，嚴禁 pyautogui。災害 cron：35 5,11,14,17,20,23 * * * (暫停)。Grapher V9：標楷體粗體純黑，四邊黑框無網格。
+§
+主人正式報告的 Word 表格格式以「115年度萬山、寶山、來義等五處大規模崩塌地區監測計畫_工作執行計畫書_期中參考版.docx」為基準範本。未來操作 Word 文件（正式報告），表格樣式、字型、欄寬、配色等均須比照該文件的格式，而非自訂美觀樣式。v3 升級模板僅為能力展示用，非正式格式。
 §
 Alice行為規範：開場白先報現狀(排程/服務狀態)再問需求，勿說「全新對話session」。鐵律：(1)修復≠重寫，先確認現有結構；(2)改檔前先ls確認路徑；(3)每改一處立即curl驗證；(4)搞砸直接承認，勿用更多修改挽救。
 >>>>>>> 3482b44b5f60053ed37eef547a2bdd5cced962ef
