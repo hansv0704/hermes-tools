@@ -45,24 +45,3 @@ git衝突:自動stash解圍(已內建)
 桌面版前端:切session時 tapClientLookup Index 10 out of bounds(off-by-one) 非我方可修 暫時解法用/reset清對話再切
 §
 桌面版語言重置:taskkill強殺Hermes.exe導致Electron無法存偏好→工具區已改用正常關閉流程 不強殺Hermes.exe
-§
-<<<<<<< HEAD
-(k) Windows 檔案編碼鐵律：.bat 用 utf-8-sig(BOM)、.vbs 用 ASCII（不吃UTF-8，中文路徑用 fso.GetParentFolderName 繞過）、.py/.pyw 用 utf-8 無 BOM。違反 = 亂碼或直接炸掉。已在 hermes_tray.vbs 犯過 2 次。
-=======
-Alice 系統核心鐵律：(1) 投資代理人是獨立 Flask 伺服器 (port 5002)，嚴禁整合進 Telegram/handlers。(2) 兆豐登入在頂層。(3) 紙上/實盤交易隔離。(4) GIS 監控獨立循環，不依賴 Alice。(5) 行動前必須先讀取 .alice/ 目錄理解系統邊界。
-§
-技術教訓合集：(a) Hermes secret redaction 破壞含 token 字串→字串拼接/heredoc 繞過；(b) cron 用 cronjob 工具建立，勿用 CLI（不支援 --no_agent）；(c) SKILL.md 須含強制規則；(d) 一鍵安裝.bat：ASCII框線、[X][OK][!]、變數勿寫死、pip讀requirements.txt、TG三config、protobuf<6.0.0；(e) openssl 在 Git 自帶；(f) MEGA=兆豐證券，非 MEGA.nz；(g) Gateway 桌面關=TG斷，需 install 背景服務(UAC)；(h) 解密互動輸入密碼；(i) curl 下載 bat 有 BOM 風險→用 git clone/bootstrap.bat；(j) 桌面版內建 Gateway，多台開=搶 TG→次要設 telegram.enabled false；(k) v3 sync 逐條合併：push 先 pull→union merge→push，pull 只拉新條目不覆蓋；(l) TG 中繼站可跨裝置傳檔。
->>>>>>> 8a0c7b8ccd71752254e95a3e339dde014590fd72
-§
-GitHub：hansv0704/hermes-tools（公開 repo）。sync v3 逐條合併雙向同步。部署：git clone + bootstrap.bat 雙擊→自動 clone+一鍵安裝→解密(密碼互動輸入)→複製記憶到 alice+default→設 alice 預設 profile→偵測 Gateway 避免搶 TG。cron 由 Alice 對話中建立。.env 用 openssl aes-256-cbc 加密。
-§
-GIS 警報層級格式：🧊數據凍結(freeze)、🔴達警戒(alert)、🟡達注意(attention)。caption 須含測站代碼、層級標題、詳細說明。watchdog token 解析需跳過值太短(<20字元)的行。
-§
-桌面版修復：Windows os.execvpe Segfault 根源在 hermes_cli/main.py:10364。source patch 已套用（main.py:10330 加 `sys.platform != "win32"` guard），skill=alice-hermes-maintenance v2.0。alice profile 現在可直接用桌面版，不需切 default。
-§
-<<<<<<< HEAD
-雙機設定
-§
-桌面版語言重置:taskkill強殺Hermes.exe導致Electron無法存偏好→工具區已改用正常關閉流程 不強殺Hermes.exe
-=======
-雙電腦識別：USERPROFILE=C:\Users\User 為家用電腦（B 端）；USERPROFILE=C:\Users\hans 為工作電腦（A 端）。兩台配置不同，寫 code 時用 USERPROFILE 判斷當前環境。記憶同步到另一台時，依 USERPROFILE 分辨「這條是講誰的」，避免 A 端讀到 B 端描述而誤認自己。
