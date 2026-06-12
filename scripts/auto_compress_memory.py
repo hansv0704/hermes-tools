@@ -5,6 +5,7 @@
 """
 import os
 import sys
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,8 +17,10 @@ MEMORY_FILE = LOCALAPPDATA / "hermes" / "profiles" / "alice" / "memories" / "MEM
 CHAR_LIMIT = 3500
 THRESHOLD = 0.8
 
-REPO_DIR = Path(os.environ.get("HERMES_WORKSPACE",
-    USERPROFILE / "Desktop" / "Hermes工具區"))
+_raw_ws = os.environ.get("HERMES_WORKSPACE", "")
+if _raw_ws:
+    _raw_ws = re.sub(r'%([^%]+)%', lambda m: os.environ.get(m.group(1), m.group(0)), _raw_ws)
+REPO_DIR = Path(_raw_ws) if _raw_ws else (USERPROFILE / "Desktop" / "Hermes工具區")
 
 
 def compress():
