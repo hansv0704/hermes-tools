@@ -27,10 +27,24 @@ log = logging.getLogger(__name__)
 # ============================================================
 #  SpeedyAPI 路徑設定
 # ============================================================
-_BASE_DIR = Path(__file__).resolve().parent.parent.parent  # skills → legacy → root
-MEGA_SPEEDY_DIR = str(_BASE_DIR / "MEGA" / "SpeedyAPI_PY" / "megaapi" / "megaSpeedy")
-MEGA_PFX_DIR = str(_BASE_DIR / "MEGA" / "MEGARA")
-MEGA_PFX_FILE = os.path.join(MEGA_PFX_DIR, "R124662445.pfx")
+# 優先使用環境變數，否則自動偵測 USERPROFILE 下的 MEGA 目錄
+# 以支援跨機器同步（A端/B端 MEGA 目錄位置不同）
+_MEGA_BASE = (
+    Path(os.environ.get("USERPROFILE", ""))
+    / "Desktop" / "alice" / "ALICE BOT" / "Alice_Brain_Arch_20260506_031953" / "MEGA"
+)
+MEGA_SPEEDY_DIR = os.getenv(
+    "MEGA_DLL_DIR",
+    str(_MEGA_BASE / "SpeedyAPI_PY" / "megaapi" / "megaSpeedy")
+)
+MEGA_PFX_DIR = os.getenv(
+    "MEGA_PFX_DIR",
+    str(_MEGA_BASE / "MEGARA")
+)
+MEGA_PFX_FILE = os.getenv(
+    "MEGA_PFX_PATH",
+    str(_MEGA_BASE / "MEGARA" / "R124662445.pfx")
+)
 
 # 將 megaSpeedy 目錄加入 sys.path 以便 import spdOrderAPI
 if MEGA_SPEEDY_DIR not in sys.path:

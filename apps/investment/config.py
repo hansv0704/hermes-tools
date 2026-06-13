@@ -11,13 +11,18 @@ DATA_DIR = BASE_DIR / "data_store"
 DATA_DIR.mkdir(exist_ok=True)
 
 # ─── 路徑配置 ───
+# 使用環境變數優先，否則自動偵測 USERPROFILE 下的 MEGA 目錄
+_MEGA_BASE = (
+    Path(os.environ.get("USERPROFILE", ""))
+    / "Desktop" / "alice" / "ALICE BOT" / "Alice_Brain_Arch_20260506_031953" / "MEGA"
+)
 MEGA_DLL_DIR = Path(os.getenv(
     "MEGA_DLL_DIR",
-    r"C:\Users\hans\Desktop\Alice_Brain_Arch_20260506_031953\MEGA\SpeedyAPI_PY\megaapi\megaSpeedy"
+    str(_MEGA_BASE / "SpeedyAPI_PY" / "megaapi" / "megaSpeedy")
 ))
 MEGA_PFX_PATH = Path(os.getenv(
     "MEGA_PFX_PATH",
-    r"C:\Users\hans\Desktop\Alice_Brain_Arch_20260506_031953\MEGA\MEGARA\R124662445.pfx"
+    str(_MEGA_BASE / "MEGARA" / "R124662445.pfx")
 ))
 DB_PATH = DATA_DIR / "investment.db"
 LOG_PATH = DATA_DIR / "agent_decision.log"

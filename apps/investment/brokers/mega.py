@@ -17,16 +17,23 @@ from .base import BrokerBase, OrderResult, AccountInfo
 log = logging.getLogger("investment.mega")
 
 # ─── 路徑設定 ───
-_BASE = Path(__file__).resolve().parent.parent.parent.parent
-_MEGA_SPEEDY_DIR = str(_BASE / "MEGA" / "SpeedyAPI_PY" / "megaapi" / "megaSpeedy")
-_MEGA_PFX_FILE = str(_BASE / "MEGA" / "MEGARA" / "R124662445.pfx")
+# 從 config 讀取路徑（支援環境變數 MEGA_DLL_DIR / MEGA_PFX_PATH）
+try:
+    from .config import MEGA_DLL_DIR as _CFG_DLL, MEGA_PFX_PATH as _CFG_PFX
+except ImportError:
+    from config import MEGA_DLL_DIR as _CFG_DLL, MEGA_PFX_PATH as _CFG_PFX
+
+_MEGA_SPEEDY_DIR = str(_CFG_DLL)
+_MEGA_PFX_FILE = str(_CFG_PFX)
 
 # 確保 DLL 目錄在 path
 if _MEGA_SPEEDY_DIR not in sys.path:
     sys.path.insert(0, _MEGA_SPEEDY_DIR)
 
-# Legacy skill 路徑
-_LEGACY_SKILLS = str(_BASE / "legacy" / "skills")
+# Legacy skill 路徑（從自身檔案位置推算 Hermes工具區根目錄）
+_MEGA_PFX_DIR = str(Path(_MEGA_PFX_FILE).parent)
+_HERMES_TOOLS_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_LEGACY_SKILLS = str(_HERMES_TOOLS_ROOT / "legacy" / "skills")
 if _LEGACY_SKILLS not in sys.path:
     sys.path.insert(0, _LEGACY_SKILLS)
 
@@ -35,7 +42,7 @@ def _patch_mega_paths():
     try:
         import mega_speedy_skill as mss
         mss.MEGA_SPEEDY_DIR = _MEGA_SPEEDY_DIR
-        mss.MEGA_PFX_DIR = str(_BASE / "MEGA" / "MEGARA")
+        mss.MEGA_PFX_DIR = _MEGA_PFX_DIR
         mss.MEGA_PFX_FILE = _MEGA_PFX_FILE
     except ImportError:
         pass
