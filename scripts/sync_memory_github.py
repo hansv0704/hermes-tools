@@ -16,8 +16,17 @@ import os
 import sys
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from datetime import datetime
+
+# Windows: 隱藏 subprocess 視窗（避免 git 操作彈 CMD）
+if sys.platform == "win32":
+    STARTUP_INFO = subprocess.STARTUPINFO()
+    STARTUP_INFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    STARTUP_INFO.wShowWindow = subprocess.SW_HIDE
+else:
+    STARTUP_INFO = None
 
 USERPROFILE = Path(os.environ["USERPROFILE"])
 LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", USERPROFILE / "AppData" / "Local"))
@@ -108,7 +117,7 @@ def push():
     # 1. git pull 取得最新
     try:
         subprocess.run(["git", "pull"],
-                       cwd=str(REPO_DIR), capture_output=True, timeout=30)
+                       cwd=str(REPO_DIR), capture_output=True, startupinfo=STARTUP_INFO, timeout=30)
     except Exception:
         pass  # 可能已經是最新
 
@@ -145,17 +154,17 @@ def push():
     # 2. git commit + push（全倉庫同步，push 被拒時 rebase 重試）
     def try_push():
         subprocess.run(["git", "add", "-A"],
-                       cwd=str(REPO_DIR), capture_output=True, check=True)
+                       cwd=str(REPO_DIR), capture_output=True, startupinfo=STARTUP_INFO, check=True)
         # 檢查是否有變更需要 commit
         diff_check = subprocess.run(["git", "diff", "--cached", "--quiet"],
-                                    cwd=str(REPO_DIR), capture_output=True)
+                                    cwd=str(REPO_DIR), capture_output=True, startupinfo=STARTUP_INFO)
         if diff_check.returncode == 0:
             return False  # 沒有變更，不 commit
         subprocess.run(["git", "commit", "-m",
                         f"sync: auto {datetime.now().strftime('%m/%d %H:%M')}"],
                        cwd=str(REPO_DIR), capture_output=True, check=True)
         subprocess.run(["git", "push", "origin", "main"],
-                       cwd=str(REPO_DIR), capture_output=True, check=True, timeout=30)
+                       cwd=str(REPO_DIR), capture_output=True, startupinfo=STARTUP_INFO, check=True, timeout=30)
         return True
 
     try:
@@ -165,7 +174,7 @@ def push():
         # push 被拒 → rebase 重試
         try:
             subprocess.run(["git", "pull", "--rebase"],
-                           cwd=str(REPO_DIR), capture_output=True, timeout=30)
+                           cwd=str(REPO_DIR), capture_output=True, startupinfo=STARTUP_INFO, timeout=30)
             try_push()
             print("[OK] 已推送到 GitHub (rebase)")
         except subprocess.CalledProcessError as e:
@@ -182,7 +191,7 @@ def pull():
     """GitHub → 本地（版本變更整份覆蓋，否則逐條合併）"""
     try:
         subprocess.run(["git", "pull"],
-                       cwd=str(REPO_DIR), capture_output=True, text=True, timeout=30)
+                       cwd=str(REPO_DIR), capture_output=True, startupinfo=STARTUP_INFO, text=True, timeout=30)
     except Exception as e:
         print(f"[X] Git pull 失敗: {e}")
         return False
