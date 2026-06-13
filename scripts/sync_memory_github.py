@@ -25,8 +25,22 @@ LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", USERPROFILE / "AppData" / "Lo
 HERMES_MEM_DIR = LOCALAPPDATA / "hermes" / "profiles" / "alice" / "memories"
 HERMES_DEFAULT_MEM_DIR = LOCALAPPDATA / "hermes" / "memories"
 
-REPO_DIR = Path(os.environ.get("HERMES_WORKSPACE",
-    USERPROFILE / "Desktop" / "Hermes工具區"))
+# REPO_DIR 解析：先試 env var，再 fallback，支援未展開的 %VAR%
+def _resolve_repo_dir():
+    import re
+    ws = os.environ.get("HERMES_WORKSPACE", "")
+    if ws:
+        ws = re.sub(r'%([^%]+)%', lambda m: os.environ.get(m.group(1), m.group(0)), ws)
+        p = Path(ws)
+        if p.exists():
+            return p
+    for d in [USERPROFILE / "Desktop" / "Hermes工具區",
+              USERPROFILE / "Desktop" / "Alice_Brain_Arch_20260506_031953"]:
+        if d.exists():
+            return d
+    return USERPROFILE / "Desktop" / "Hermes工具區"
+
+REPO_DIR = _resolve_repo_dir()
 REPO_MEM_DIR = REPO_DIR / "memory"
 
 FILES = ["USER.md", "MEMORY.md"]
@@ -237,6 +251,8 @@ def pull():
                     rel = f.relative_to(src_dir)
                     dst = dst_dir / rel
                     dst.parent.mkdir(parents=True, exist_ok=True)
+                    if f.name in ("sync_memory_github.py", "sync_memory_bidirectional.py", "sync_memory_pull.py", "sync_trigger.bat"):
+                        continue  # 不覆蓋 sync 腳本自身
                     if not dst.exists() or f.read_bytes() != dst.read_bytes():
                         shutil.copy2(f, dst)
     return True
