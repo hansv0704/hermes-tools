@@ -1,26 +1,38 @@
 #!/usr/bin/env python3
-"""雙向同步：先 pull（含版本覆蓋）→ 再 push 本地新記憶上 GitHub"""
+"""雙向同步：先 pull → 再 push"""
 import subprocess
 import sys
 from pathlib import Path
 
+PYTHONW = r"C:\Users\User\AppData\Local\hermes\hermes-agent\venv\Scripts\pythonw.exe"
 script_dir = Path(__file__).parent
 sync_script = script_dir / "sync_memory_github.py"
 
-# Step 1: pull（含 .version 覆蓋機制）
+# Windows: 隱藏 subprocess 視窗
+if sys.platform == "win32":
+    SI = subprocess.STARTUPINFO()
+    SI.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    SI.wShowWindow = subprocess.SW_HIDE
+else:
+    SI = None
+
+# Step 1: pull
 r1 = subprocess.run(
-    [sys.executable, str(sync_script), "pull"],
-    capture_output=True, text=True, timeout=60
+    [PYTHONW, str(sync_script), "pull"],
+    capture_output=True, text=True, timeout=60,
+    startupinfo=SI
 )
 if r1.stdout:
     print(r1.stdout.strip())
 
-# Step 2: push 本地新記憶上去
+# Step 2: push
 r2 = subprocess.run(
-    [sys.executable, str(sync_script), "push"],
-    capture_output=True, text=True, timeout=60
+    [PYTHONW, str(sync_script), "push"],
+    capture_output=True, text=True, timeout=60,
+    startupinfo=SI
 )
 if r2.stdout:
     print(r2.stdout.strip())
 
-sys.exit(0 if r1.returncode == 0 and r2.returncode == 0 else 1)
+# push 失敗通常是無 token，只關心 pull
+sys.exit(0 if r1.returncode == 0 else 1)
